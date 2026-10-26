@@ -1,0 +1,15 @@
+const assert = require('node:assert/strict');
+const {weatherIntentDraft} = require('../channel/web/static/js/network-weather-intent.js');
+const original = '每天早上8:00发送当日上海浦东天气情况';
+const draft = weatherIntentDraft(original);
+assert.equal(draft.name, '上海浦东天气');
+assert.equal(draft.runTime, '08:00');
+assert.equal(draft.scheduled, true);
+assert.ok(draft.content.includes(original));
+assert.ok(!draft.content.includes('Agent 学习分'));
+assert.ok(!draft.content.includes('[链接](完整URL)'));
+assert.equal(weatherIntentDraft('查询今天北京天气').scheduled, false);
+assert.equal(weatherIntentDraft('每个工作日下午3点半查询上海天气').runTime, '15:30');
+assert.equal(weatherIntentDraft('查询AI Agent新闻'), null);
+assert.throws(()=>weatherIntentDraft('每天25:90查天气'));
+console.log('Weather intent regression passed');

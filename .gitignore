@@ -1,0 +1,102 @@
+.DS_Store
+.idea
+.vscode
+.venv
+.vs
+__pycache__/
+venv*
+*.pyc
+python
+config.json
+QR.png
+nohup.out
+tmp
+plugins.json
+*.log
+logs/
+/workspace
+config.yaml
+user_datas.pkl
+chatgpt_tool_hub/
+plugins/**/
+!plugins/bdunit
+!plugins/dungeon
+!plugins/finish
+!plugins/godcmd
+!plugins/tool
+!plugins/banwords
+!plugins/banwords/**/
+plugins/banwords/__pycache__
+plugins/banwords/lib/__pycache__
+!plugins/hello
+!plugins/role
+!plugins/keyword
+!plugins/linkai
+!plugins/cow_cli
+client_config.json
+# HMAC key for signing /preview URLs; generated per install.
+.preview_secret
+# Local credentials, access-control state, and OAuth tokens.
+openai_codex_auth.json
+weixin_credentials.json
+channel_access.json
+api/access_keys.json
+*.credentials.json
+*.token.json
+ref/
+**/.dev.vars
+.cursor/
+local/
+node_modules/
+
+# cow cli
+dist/
+build/
+*.egg-info/
+.cow.pid
+
+# Desktop backend packaging: keep the source files (spec/requirements/script)
+# tracked even though the generic build/ rule above ignores them, but never
+# track the build outputs or local venv.
+!desktop/build/
+desktop/build/*
+!desktop/build/cowagent-backend.spec
+!desktop/build/requirements-desktop.txt
+!desktop/build/build-backend.sh
+!desktop/build/build-feishu-vendor.py
+!desktop/build/entitlements.mac.plist
+!desktop/build/notarize-dmg.sh
+
+# Icon authoring scratch dir: intermediate assets used to produce the final
+# icons. Only the finished icons under desktop/resources/ should be committed.
+desktop/resources/.icon-work/
+
+# Bundled ripgrep binary: downloaded by CI (release workflow) at build time,
+# never committed — it's a multi-MB platform-specific executable.
+desktop/resources/bin/
+
+.wrangler/
+
+# Personal installation state and generated data (never publish).
+/.cow_runtime/
+/backups/
+/deliverables/
+/knowledge/
+/integrations/*.json
+/work/
+/tmp*/
+/cowagent_state.db
+/local_file_index.sqlite3
+/inbox.json
+/storage_retention.json
+/intelligence_center/**
+!/intelligence_center/*.py
+**/*.db
+**/*.sqlite3
+**/*.jsonl
+**/.env
+**/.env.*
+!**/.env.example
+**/*credentials*.json
+**/*token*.json
+**/*secret*.json
