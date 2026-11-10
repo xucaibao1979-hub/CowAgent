@@ -145,6 +145,7 @@ class ChannelManager:
     def __init__(self):
         self._channels = {}        # channel_name -> channel instance
         self._threads = {}         # channel_name -> thread
+        self._start_versions = {}  # invalidate stale asynchronous channel boots
         self._primary_channel = None
         self._lock = threading.Lock()
         self.cloud_mode = False    # set to True when cloud client is active
@@ -171,6 +172,12 @@ class ChannelManager:
             if self._channels.get(name) is not None:
                 logger.warning(f"[ChannelManager] Channel '{name}' is already running, stopping it first")
                 self.stop(name)
+        with self._lock:
+            versions = {}
+            for name in dict.fromkeys(channel_names or []):
+                version = self._start_versions.get(name, 0) + 1
+                self._start_versions[name] = version
+                versions[name] = version
 
         if first_start:
             if DESKTOP_MODE:
@@ -193,10 +200,10 @@ class ChannelManager:
 
         web_started = []
         for name in web_names:
-            entry = self._create_channel_entry(name)
+            entry = self._create_channel_entry(name, versions[name])
             if entry:
                 web_started.append(entry)
-                self._start_channel_entry(*entry)
+                self._start_channel_entry(*entry, versions[name])
 
         if not web_started and not other_names:
             logger.warning("[ChannelManager] No valid channels to start")
@@ -210,10 +217,10 @@ class ChannelManager:
                 if web_started:
                     time.sleep(0.8)
                 for name in other_names:
-                    entry = self._create_channel_entry(name)
+                    entry = self._create_channel_entry(name, versions[name])
                     if not entry:
                         continue
-                    self._start_channel_entry(*entry)
+                    self._start_channel_entry(*entry, versions[name])
                     time.sleep(0.1)
                 self._start_optional_cloud_client()
 
@@ -221,7 +228,7 @@ class ChannelManager:
         else:
             self._start_optional_cloud_client()
 
-    def _create_channel_entry(self, name: str):
+    def _create_channel_entry(self, name: str, version: int = None):
         # One misconfigured channel (e.g. wechatcom_app without its
         # corp_id/token/aes_key) must not take the whole process down:
         # instantiating it can raise while parsing config. The web console in
@@ -236,6 +243,8 @@ class ChannelManager:
             return None
         ch.cloud_mode = self.cloud_mode
         with self._lock:
+            if version is not None and self._start_versions.get(name) != version:
+                return None
             self._channels[name] = ch
             if name != "web" and (
                 self._primary_channel is None
@@ -246,11 +255,13 @@ class ChannelManager:
                 self._primary_channel = ch
         return name, ch
 
-    def _start_channel_entry(self, name: str, ch):
+    def _start_channel_entry(self, name: str, ch, version: int = None):
         t = threading.Thread(target=self._run_channel, args=(name, ch), daemon=True)
         with self._lock:
+            if version is not None and self._start_versions.get(name) != version:
+                return
+            t.start()
             self._threads[name] = t
-        t.start()
         logger.debug(f"[ChannelManager] Channel '{name}' started in sub-thread")
 
     def _start_optional_cloud_client(self):
@@ -298,6 +309,7 @@ class ChannelManager:
             names = [channel_name] if channel_name else list(self._channels.keys())
             to_stop = []
             for name in names:
+                self._start_versions[name] = self._start_versions.get(name, 0) + 1
                 ch = self._channels.pop(name, None)
                 th = self._threads.pop(name, None)
                 to_stop.append((name, ch, th))
@@ -546,7 +558,7 @@ def _warn_if_legacy_workspace_data_exists():
         from common.state_dir import state_root_str
         from common.utils import expand_path
         workspace_root = state_root_str()
-        legacy_root = expand_path("~/cow")
+        legacy_root = os.path.normpath(expand_path("~/cow"))
         # samefile checks filesystem identity, so case-insensitive filesystems
         # (default on Windows and macOS) are handled correctly - normcase
         # alone isn't enough, since it only folds case on Windows. Falls back
@@ -734,4 +746,8 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    if "--desktop-mcp" in sys.argv:
+        from integrations.desktop_control.server import main as run_desktop_mcp
+        run_desktop_mcp()
+    else:
+        run()

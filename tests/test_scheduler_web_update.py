@@ -53,7 +53,8 @@ def _post_update(tmp_path, payload):
     with patch("channel.web.web_channel._require_auth"), \
          patch("channel.web.web_channel.web.header"), \
          patch("channel.web.web_channel.web.data", return_value=json.dumps(payload).encode()), \
-         patch("channel.web.web_channel._get_workspace_root", return_value=str(tmp_path)):
+         patch("channel.web.web_channel._get_workspace_root", return_value=str(tmp_path)), \
+         patch("channel.web.web_channel.ChannelsHandler._active_channel_set", return_value={"feishu"}):
         return json.loads(SchedulerUpdateHandler().POST())
 
 
@@ -61,6 +62,7 @@ def test_web_manual_run_is_authenticated_and_delegates_to_scheduler():
     assert hasattr(web_channel, "SchedulerRunHandler")
 
     service = Mock()
+    service.run_task_now.return_value = "run-1"
     with patch("channel.web.web_channel._require_auth") as require_auth, \
          patch("channel.web.web_channel.web.header"), \
          patch("channel.web.web_channel.web.data", return_value=b'{"task_id":"task-1"}'), \
@@ -71,6 +73,7 @@ def test_web_manual_run_is_authenticated_and_delegates_to_scheduler():
     service.run_task_now.assert_called_once_with("task-1")
     assert response == {
         "status": "success",
+        "run_id": "run-1",
         "message": "Task 'task-1' queued for immediate execution",
     }
 

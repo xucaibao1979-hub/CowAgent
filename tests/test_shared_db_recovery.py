@@ -9,6 +9,7 @@ conversation history down with it — the failure mode being pinned here is
 "no such table: sessions" after the memory index repaired itself.
 """
 import logging
+import contextlib
 import os
 import shutil
 import sqlite3
@@ -26,6 +27,9 @@ from agent.memory.storage import MemoryChunk, MemoryStorage
 
 class TestSharedDbRecovery(unittest.TestCase):
     def setUp(self):
+        from config import conf
+        self._old_integrity_check = conf().get("memory_integrity_check", False)
+        conf()["memory_integrity_check"] = True
         self.tmp = Path(tempfile.mkdtemp())
         self.db = self.tmp / "index.db"
         # These cases corrupt databases on purpose. Their recovery logging is
@@ -36,6 +40,8 @@ class TestSharedDbRecovery(unittest.TestCase):
         self._log.setLevel(logging.CRITICAL + 1)
 
     def tearDown(self):
+        from config import conf
+        conf()["memory_integrity_check"] = self._old_integrity_check
         self._log.setLevel(self._log_level)
         shutil.rmtree(self.tmp, ignore_errors=True)
 
@@ -102,11 +108,14 @@ class TestSharedDbRecovery(unittest.TestCase):
                 f"s{i}", [{"role": "user", "content": "x" * 400}], channel_type="web"
             )
         MemoryStorage(self.db).close()
-        sqlite3.connect(self.db).execute("PRAGMA journal_mode=DELETE")
+        with contextlib.closing(sqlite3.connect(self.db)) as raw:
+            raw.execute("PRAGMA journal_mode=DELETE")
+            page_size = raw.execute("PRAGMA page_size").fetchone()[0]
+            root_page = raw.execute("SELECT rootpage FROM sqlite_master WHERE name='messages'").fetchone()[0]
 
         with open(self.db, "r+b") as f:
-            f.seek(4096 * 3)
-            f.write(b"\x00" * 4096)
+            f.seek(page_size * (root_page - 1))
+            f.write(b"\x00" * page_size)
 
         MemoryStorage(self.db).close()
         self.assertEqual(len(self._quarantined()), 1)

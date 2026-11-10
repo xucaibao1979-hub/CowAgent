@@ -45,6 +45,7 @@ def test_no_lock_reads_as_no_owner(tmp_path):
     assert _launcher(tmp_path)._singleton_owner_pid() is None
 
 
+@posix_only
 def test_an_unparsable_lock_target_reads_as_no_owner(tmp_path):
     os.symlink("myhost-notapid", tmp_path / "SingletonLock")
 
@@ -68,6 +69,7 @@ def test_this_process_counts_as_alive():
     assert ChromeLauncher._pid_alive(os.getpid()) is True
 
 
+@posix_only
 def test_clearing_removes_every_lock(tmp_path):
     _write_locks(tmp_path, "myhost-4194303")
 

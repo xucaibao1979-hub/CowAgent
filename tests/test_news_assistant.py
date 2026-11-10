@@ -46,7 +46,7 @@ class NewsAssistantTests(unittest.TestCase):
         with patch("urllib.request.urlopen", return_value=_Response(FEED)):
             result = self.service.run(task["id"])
         self.assertEqual(1, len(result["items"]))
-        self.assertIn("栏目一｜隔夜重点", result["report"])
+        self.assertIn("AI Agent product launch", result["report"])
         self.assertTrue(Path(result["report_path"]).exists())
 
     def test_isolated_create_execute_artifact_notification_and_duplicate(self):

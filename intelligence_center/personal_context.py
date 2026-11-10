@@ -151,12 +151,13 @@ def personal_route_hints(data_dir, message: str = "", intent: str = "", limit: i
     return {"preferences": preferences[:limit], "source_domains": source_domains[:limit], "topics": topics[:limit]}
 
 
-def google_news_sources(domains, keywords=None, limit=10) -> list[str]:
+def google_news_sources(domains, keywords=None, limit=10, days=1) -> list[str]:
     terms = " OR ".join(list(dict.fromkeys([str(x).strip() for x in (keywords or []) if str(x).strip()]))[:6])
     topic = f"({terms})" if terms else "AI OR 科技 OR 创业"
     sources = []
+    days = max(1, min(int(days), 30))
     for domain in list(dict.fromkeys(domains or []))[:limit]:
-        query = f"{topic} site:{domain} when:1d"
+        query = f"{topic} site:{domain} when:{days}d"
         sources.append("https://news.google.com/rss/search?q=" + quote(query) + "&hl=zh-CN&gl=CN&ceid=CN:zh-Hans")
     return sources
 

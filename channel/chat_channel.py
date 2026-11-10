@@ -481,8 +481,13 @@ class ChatChannel(Channel):
     def _send(self, reply: Reply, context: Context, retry_cnt=0):
         try:
             sent = self.send(reply, context)
-            emit_trace(context, '发送回复', 'success' if sent is True else 'failed' if sent is False else 'unconfirmed',
-                       notification_written=sent if isinstance(sent, bool) else None)
+            send_status = 'success' if sent is True else 'failed' if sent is False else 'unconfirmed'
+            if sent is False and (context.get('channel_type') or self.channel_type) == 'weixin':
+                from common.task_trace import get_send_status
+                if get_send_status() == 'unconfirmed':
+                    send_status = 'unconfirmed'
+            emit_trace(context, '发送回复', send_status,
+                       notification_written=sent if send_status in {'success', 'failed'} else None)
         except Exception as e:
             emit_trace(context, '发送回复', 'failed', notification_written=False)
             logger.error("[chat_channel] sendMsg error: {}".format(str(e)))

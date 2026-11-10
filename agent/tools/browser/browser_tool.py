@@ -51,10 +51,11 @@ class BrowserTool(BaseTool):
         "get_text, press, evaluate.\n\n"
         "Workflow: navigate (auto-includes snapshot with element refs) → click/fill/select by ref → snapshot to verify.\n\n"
         "Use snapshot as the primary way to read pages. Use screenshot + send to show key results to the user. "
-        "For login/CAPTCHA/authorization etc., screenshot and ask the user for help. "
-        "Login state is persisted across sessions (cookies / localStorage are kept in a "
-        "user profile directory), so once the user logs in to a site, the agent can keep "
-        "using it without logging in again."
+        "This tool normally starts CowAgent's separate browser profile and does not share "
+        "the user's already open Chrome/Edge login. For account websites, first use "
+        "desktop_browser_list_tabs, then desktop_browser_select_tab or "
+        "desktop_browser_open_tab in the user's existing browser. Only ask for login "
+        "after checking the user's existing browser session."
     )
 
     params: dict = {

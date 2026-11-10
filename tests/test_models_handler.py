@@ -41,7 +41,8 @@ class TestModelsHandler(unittest.TestCase):
             "reasoning_effort": "max",
         })
 
-        with patch("channel.web.web_channel._require_auth", lambda: None):
+        with patch("channel.web.web_channel._require_auth", lambda: None), \
+             patch("channel.web.web_channel.web.header"):
             with patch("channel.web.web_channel.conf", return_value=local_config):
                 result = json.loads(ConfigHandler().GET())
 
@@ -54,7 +55,7 @@ class TestModelsHandler(unittest.TestCase):
             [item["value"] for item in result["providers"]["deepseek"]["reasoning_by_model"]["deepseek-v4-flash"]["options"]],
             ["low", "high", "xhigh", "max"],
         )
-        self.assertFalse(result["providers"]["deepseek"]["reasoning_by_model"]["deepseek-chat"]["supported"])
+        self.assertNotIn("deepseek-chat", result["providers"]["deepseek"]["reasoning_by_model"])
         self.assertEqual(
             [item["value"] for item in result["providers"]["zhipu"]["reasoning"]["options"]],
             ["low", "medium", "high", "xhigh", "max"],
@@ -121,7 +122,8 @@ class TestModelsHandler(unittest.TestCase):
             "reasoning_effort": "max",
         })
 
-        with patch("channel.web.web_channel._require_auth", lambda: None):
+        with patch("channel.web.web_channel._require_auth", lambda: None), \
+             patch("channel.web.web_channel.web.header"):
             with patch("channel.web.web_channel.conf", return_value=local_config):
                 result = json.loads(ConfigHandler().GET())
 

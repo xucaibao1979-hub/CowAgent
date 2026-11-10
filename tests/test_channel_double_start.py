@@ -9,6 +9,7 @@ to both and users got two replies to one message.
 
 import os
 import sys
+import time
 import unittest
 from unittest.mock import patch
 
@@ -48,6 +49,9 @@ class ChannelStartTest(unittest.TestCase):
         self.mgr = app.ChannelManager()
 
     def _join_threads(self):
+        deadline = time.monotonic() + 5
+        while not self.mgr._threads and time.monotonic() < deadline:
+            time.sleep(0.01)
         for th in list(self.mgr._threads.values()):
             th.join(timeout=5)
 

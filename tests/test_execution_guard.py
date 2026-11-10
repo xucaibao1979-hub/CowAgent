@@ -26,7 +26,7 @@ class ExecutionGuardTests(unittest.TestCase):
 
     def child(self, task):
         code = "from plugins.intelligence_center.execution_guard import task_process_lock; import sys;\nwith task_process_lock(sys.argv[1],'news',sys.argv[2]): print('acquired')"
-        return subprocess.run([sys.executable, '-X', 'utf8', '-c', code, str(self.root), task], capture_output=True, text=True, timeout=15)
+        return subprocess.run([sys.executable, '-X', 'utf8', '-c', code, str(self.root), task], capture_output=True, text=True, encoding='utf-8', timeout=15)
 
     def test_other_process_rejected_and_different_task_allowed(self):
         with task_process_lock(self.root, 'news', 'one'):
@@ -38,7 +38,7 @@ class ExecutionGuardTests(unittest.TestCase):
 
     def test_terminated_worker_releases_os_lock(self):
         code = "from plugins.intelligence_center.execution_guard import task_process_lock; import sys,time;\nwith task_process_lock(sys.argv[1],'news','one'):\n print('ready',flush=True)\n time.sleep(30)"
-        worker = subprocess.Popen([sys.executable, '-X', 'utf8', '-c', code, str(self.root)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        worker = subprocess.Popen([sys.executable, '-X', 'utf8', '-c', code, str(self.root)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8')
         try:
             self.assertEqual('ready', worker.stdout.readline().strip())
             self.assertNotEqual(0, self.child('one').returncode)

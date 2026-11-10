@@ -11,6 +11,7 @@ from agent.tools.ls.ls import Ls
 from agent.tools.send.send import Send
 from agent.tools.local_email.local_email import LocalEmailTool
 from agent.tools.weather.weather import WeatherTool
+from agent.tools.task_plan import TaskPlanTool
 
 try:
     from agent.tools.search_files.search_files import SearchFiles
@@ -149,6 +150,7 @@ __all__ = [
     'SearchFiles',
     'LocalEmailTool',
     'WeatherTool',
+    'TaskPlanTool',
     'MemorySearchTool',
     'MemoryGetTool',
     'EvolutionUndoTool',

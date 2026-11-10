@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at        INTEGER NOT NULL,
     last_active       INTEGER NOT NULL,
     msg_count         INTEGER NOT NULL DEFAULT 0,
-    pinned            INTEGER NOT NULL DEFAULT 0
+    pinned            INTEGER NOT NULL DEFAULT 0,
+    archived          INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -75,6 +76,10 @@ ALTER TABLE sessions ADD COLUMN context_start_seq INTEGER NOT NULL DEFAULT 0;
 # User-pinned conversations, kept at the top of the session list.
 _MIGRATION_ADD_PINNED = """
 ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+"""
+
+_MIGRATION_ADD_ARCHIVED = """
+ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
 """
 
 # Generic JSON sidecar for per-message attachments (TTS audio URL, future use).
@@ -1229,6 +1234,7 @@ class ConversationStore:
         channel_type: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
+        archived: bool = False,
     ) -> Dict[str, Any]:
         """
         List sessions with pinned ones first, then last_active DESC, with an
@@ -1254,31 +1260,33 @@ class ConversationStore:
             try:
                 if channel_type:
                     total = conn.execute(
-                        "SELECT COUNT(*) FROM sessions WHERE channel_type = ?",
-                        (channel_type,),
+                        "SELECT COUNT(*) FROM sessions WHERE channel_type = ? AND archived = ?",
+                        (channel_type, int(archived)),
                     ).fetchone()[0]
                     rows = conn.execute(
                         """
                         SELECT session_id, title, created_at, last_active, msg_count, pinned
                         FROM sessions
-                        WHERE channel_type = ?
+                        WHERE channel_type = ? AND archived = ?
                         ORDER BY pinned DESC, last_active DESC
                         LIMIT ? OFFSET ?
                         """,
-                        (channel_type, page_size, (page - 1) * page_size),
+                        (channel_type, int(archived), page_size, (page - 1) * page_size),
                     ).fetchall()
                 else:
                     total = conn.execute(
-                        "SELECT COUNT(*) FROM sessions",
+                        "SELECT COUNT(*) FROM sessions WHERE archived = ?",
+                        (int(archived),),
                     ).fetchone()[0]
                     rows = conn.execute(
                         """
                         SELECT session_id, title, created_at, last_active, msg_count, pinned
                         FROM sessions
+                        WHERE archived = ?
                         ORDER BY pinned DESC, last_active DESC
                         LIMIT ? OFFSET ?
                         """,
-                        (page_size, (page - 1) * page_size),
+                        (int(archived), page_size, (page - 1) * page_size),
                     ).fetchall()
             finally:
                 conn.close()
@@ -1325,6 +1333,19 @@ class ConversationStore:
                     cur = conn.execute(
                         "UPDATE sessions SET pinned = ? WHERE session_id = ?",
                         (1 if pinned else 0, session_id),
+                    )
+                    return cur.rowcount > 0
+            finally:
+                conn.close()
+
+    def set_archived(self, session_id: str, archived: bool) -> bool:
+        with self._lock:
+            conn = self._connect()
+            try:
+                with conn:
+                    cur = conn.execute(
+                        "UPDATE sessions SET archived = ? WHERE session_id = ?",
+                        (int(archived), session_id),
                     )
                     return cur.rowcount > 0
             finally:
@@ -1449,6 +1470,13 @@ class ConversationStore:
                 logger.info("[ConversationStore] Migrated: added pinned column")
             except Exception as e:
                 logger.warning(f"[ConversationStore] Migration (pinned) failed: {e}")
+        if "archived" not in cols:
+            try:
+                conn.execute(_MIGRATION_ADD_ARCHIVED)
+                conn.commit()
+                logger.info("[ConversationStore] Migrated: added archived column")
+            except Exception as e:
+                logger.warning(f"[ConversationStore] Migration (archived) failed: {e}")
 
         msg_cols = {
             row[1]

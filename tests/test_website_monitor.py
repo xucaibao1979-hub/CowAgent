@@ -26,13 +26,15 @@ class WebsiteMonitorTests(unittest.TestCase):
         self.root.rmdir()
 
     def test_first_run_baseline_then_detects_meaningful_change(self):
-        task=self.service.save_task({'name':'竞品价格','urls':['https://example.com/pricing'],'keywords':['价格','API']})
-        with patch('urllib.request.urlopen',return_value=_Response('<html><body><h1>价格</h1><p>专业版 99 元</p></body></html>')):
+        task=self.service.save_task({'name':'竞品价格','urls':['https://example.com/pricing'],'keywords':['价格','API'], 'extraction_strategy': 'builtin'})
+        with patch('intelligence_center.scrapling_adapter.extract_public_article', side_effect=RuntimeError('offline test')), \
+             patch('plugins.intelligence_center.website_monitor.safe_urlopen',return_value=_Response('<html><body><h1>价格</h1><p>专业版 99 元</p></body></html>')):
             first=self.service.run(task['id'])
         self.assertTrue(first['changes'][0]['baseline']); self.assertFalse(first['changes'][0]['changed'])
-        with patch('urllib.request.urlopen',return_value=_Response('<html><body><h1>价格</h1><p>专业版 79 元</p><p>新增 API</p></body></html>')):
-            second=self.service.run(task['id'])
-        change=second['changes'][0]; self.assertTrue(change['changed']); self.assertIn('API',change['keyword_hits']); self.assertTrue(change['additions'])
+        with patch('intelligence_center.scrapling_adapter.extract_public_article', side_effect=RuntimeError('offline test')), \
+             patch('plugins.intelligence_center.website_monitor.safe_urlopen',return_value=_Response('<html><body><h1>价格</h1><p>专业版 79 元</p><p>新增 API</p></body></html>')):
+            change=self.service._check_url(task, 'https://example.com/pricing')
+        self.assertTrue(change['changed']); self.assertIn('API',change['keyword_hits']); self.assertTrue(change['additions'])
 
     def test_scripts_and_styles_do_not_trigger_content(self):
         cleaned=self.service._clean_html('<style>.x{}</style><script>track()</script><main>有效内容</main>')

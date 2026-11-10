@@ -16,6 +16,12 @@ def classify_error(value: Any, permission_denied: bool = False) -> str:
     if permission_denied:
         return "permission_denied"
     text = str(value or "").casefold()
+    if "context_token" in text or "会话发送令牌" in text or "ret=-14" in text:
+        return "session_token_expired"
+    if "prepare failed" in text or "ret=-2" in text or "准备发送失败" in text:
+        return "provider_prepare_failed"
+    if "通道" in text and ("不可用" in text or "未连接" in text):
+        return "channel_unavailable"
     if "timed out" in text or "timeout" in text or "超时" in text:
         return "timeout"
     if "not found" in text or "no module named" in text or "未找到" in text:
@@ -81,6 +87,16 @@ def record_tool_run(tool: str, arguments: dict, success: bool, *, status: str = 
                 path.replace(backup)
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(line)
+        effective_run_id = str(run_id or identity.run_id or "")
+        if effective_run_id:
+            from config import get_data_root
+            from agent.execution.task_state import TaskStateStore
+            states = TaskStateStore(Path(get_data_root()) / "intelligence_center" / "task_states")
+            if states.read(effective_run_id):
+                states.record({"id": effective_run_id, "stage": "工具执行", "tool": str(tool or ""),
+                               "status": "completed" if success else "failed",
+                               "at": event["timestamp"], "error_code": event["error_code"],
+                               "duration_ms": round(float(execution_time or 0) * 1000)})
     except Exception:
         # Audit must never break the user's task.
         return

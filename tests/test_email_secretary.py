@@ -20,7 +20,7 @@ class FakeImap:
 
 class EmailSecretaryTests(unittest.TestCase):
     def setUp(self):
-        self.root=Path('work/test-data')/uuid.uuid4().hex; self.root.mkdir(parents=True); self.service=EmailSecretaryService(str(self.root),{"imap_host":"mail.local","username":"user@example.com","password":"secret"})
+        self.root=Path('work/test-data')/uuid.uuid4().hex; self.root.mkdir(parents=True); self.service=EmailSecretaryService(str(self.root),{"source_type":"imap","imap_host":"mail.local","username":"user@example.com","password":"secret"})
     def tearDown(self):
         for path in sorted(self.root.rglob('*'),reverse=True): path.unlink() if path.is_file() else path.rmdir()
         self.root.rmdir()
@@ -30,7 +30,7 @@ class EmailSecretaryTests(unittest.TestCase):
         self.assertEqual(result["messages"][0]["priority"],"高"); self.assertIn("优先处理",result["report"])
     def test_missing_settings_is_explained(self):
         service=EmailSecretaryService(str(self.root),{})
-        task=service.save_task({"name":"邮箱摘要"})
+        task=service.save_task({"name":"邮箱摘要","source_type":"imap"})
         with self.assertRaisesRegex(ValueError,"邮箱服务器"): service.run(task["id"])
 
 

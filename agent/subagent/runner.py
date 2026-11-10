@@ -131,8 +131,8 @@ def _build_child(parent, template, task: SubagentTask):
     # Same working directory and same permission mode as the parent: the tool
     # copies already point at the parent's cwd, and delegating to a sub agent
     # must not become a way around the session's permissions.
-    child.project_dir = parent.project_dir
-    child.permission_mode = parent.permission_mode
+    child.project_dir = getattr(parent, "project_dir", None)
+    child.permission_mode = getattr(parent, "permission_mode", None)
     return child
 
 

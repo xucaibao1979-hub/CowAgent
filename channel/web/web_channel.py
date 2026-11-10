@@ -33,6 +33,7 @@ from common import const
 from common import i18n
 from common.log import logger
 from common.singleton import singleton
+from channel.web.ppt_master_handoff import PptMasterHandoff, project_from_daemon_command
 from config import (
     conf,
     get_data_root,
@@ -834,6 +835,39 @@ class WebChannel(ChatChannel):
         self._sse_streams_lock = threading.RLock()
         self._http_server = None
         self._sse_janitor_started = False
+        self._ppt_handoff = PptMasterHandoff(
+            _get_workspace_root(), self._dispatch_ppt_handoff,
+            on_failure=self._notify_ppt_handoff_failed,
+        )
+
+    def _notify_ppt_handoff_failed(self, session_id: str, agent_id: str, reason: str) -> None:
+        queue_key = self._session_queue_key(session_id, agent_id)
+        self.session_queues.setdefault(queue_key, Queue()).put({
+            "type": str(ReplyType.TEXT),
+            "content": f"PPT 任务暂停：{reason}。已保留现有项目和文件，可从当前进度继续。",
+            "timestamp": time.time(),
+            "request_id": self._generate_request_id(),
+        })
+
+    def _dispatch_ppt_handoff(self, session_id: str, agent_id: str, prompt: str) -> None:
+        """Resume the existing Agent session after a real ppt-master receipt."""
+        request_id = self._generate_request_id()
+        self.request_to_session[request_id] = session_id
+        self.request_to_agent[request_id] = agent_id
+        self.request_to_prompt[request_id] = prompt
+        REQUEST_PROMPT_REGISTRY[request_id] = prompt
+        queue_key = self._session_queue_key(session_id, agent_id)
+        self.session_queues.setdefault(queue_key, Queue())
+        msg = WebMessage(self._generate_msg_id(), prompt)
+        msg.from_user_id = session_id
+        context = self._compose_context(ContextType.TEXT, prompt, msg=msg, isgroup=False)
+        if context is None:
+            raise RuntimeError("Agent continuation was filtered")
+        context["session_id"] = session_id
+        context["receiver"] = session_id
+        context["request_id"] = request_id
+        context["agent_id"] = agent_id
+        self.produce(context)
 
     def _generate_msg_id(self):
         """生成唯一的消息ID"""
@@ -849,7 +883,7 @@ class WebChannel(ChatChannel):
         try:
             if isinstance(event, dict) and event.get("type") == "done":
                 original_prompt = str(
-                    self.request_to_prompt.get(request_id)
+                    getattr(self, "request_to_prompt", {}).get(request_id)
                     or REQUEST_PROMPT_REGISTRY.get(request_id)
                     or ""
                 )
@@ -968,7 +1002,7 @@ class WebChannel(ChatChannel):
                 if reply.type == ReplyType.TEXT:
                     content = _sanitize_agent_reach_visible_content(content)
                     original_prompt = (
-                        self.request_to_prompt.get(request_id)
+                        getattr(self, "request_to_prompt", {}).get(request_id)
                         or REQUEST_PROMPT_REGISTRY.get(request_id)
                         or str(context.content or "")
                     )
@@ -1122,6 +1156,7 @@ class WebChannel(ChatChannel):
         # subsequent agent_end handler can skip its "empty final_response"
         # fallback (which would otherwise overwrite the real error).
         streamed_error: List[str] = []
+        ppt_daemon_calls = {}
 
         def on_event(event: dict):
             if request_id not in self.sse_streams:
@@ -1172,6 +1207,11 @@ class WebChannel(ChatChannel):
             elif event_type == "tool_execution_start":
                 tool_name = data.get("tool_name", "tool")
                 arguments = data.get("arguments", {})
+                if tool_name in {"bash", "shell", "exec_command"} and isinstance(arguments, dict):
+                    command = str(arguments.get("command") or arguments.get("cmd") or "")
+                    project = project_from_daemon_command(command, _get_workspace_root())
+                    if project:
+                        ppt_daemon_calls[data.get("tool_call_id")] = project
                 publish({"type": "tool_start", "tool_call_id": data.get("tool_call_id"), "tool": tool_name, "arguments": arguments})
 
             elif event_type == "tool_execution_progress":
@@ -1185,6 +1225,13 @@ class WebChannel(ChatChannel):
             elif event_type == "tool_execution_end":
                 tool_name = data.get("tool_name", "tool")
                 status = data.get("status", "success")
+                project = ppt_daemon_calls.pop(data.get("tool_call_id"), None)
+                if project and status in {"success", "completed"}:
+                    self._ppt_handoff.register(
+                        project,
+                        self.request_to_session.get(request_id, ""),
+                        self.request_to_agent.get(request_id, ""),
+                    )
                 result = data.get("result", "")
                 exec_time = data.get("execution_time", 0)
                 # Truncate long results to avoid huge SSE payloads
@@ -1269,6 +1316,9 @@ class WebChannel(ChatChannel):
                 })
 
             elif event_type == "agent_end":
+                self._ppt_handoff.start_for_session(
+                    self.request_to_session.get(request_id, "")
+                )
                 # Safety net: if the agent finishes with an empty final_response,
                 # chat_channel skips _send_reply (because reply.content is empty),
                 # which means no "done" event is ever emitted and the SSE stream
@@ -2350,6 +2400,7 @@ class WebChannel(ChatChannel):
             '/api/browser-runtime', 'BrowserRuntimeHandler',
             '/api/agent-reach', 'AgentReachHandler',
             '/api/tool-connectors', 'ToolConnectorsHandler',
+            '/api/desktop-control', 'DesktopControlHandler',
             '/api/intelligence/exploration', 'IntelligenceExplorationHandler',
             '/api/personal-agent', 'PersonalAgentHandler',
             '/api/agent2', 'Agent2Handler',
@@ -2359,6 +2410,7 @@ class WebChannel(ChatChannel):
             '/api/agent-roster', 'AgentRosterHandler',
             '/api/remote-bridge', 'RemoteBridgeHandler',
             '/api/agent-routing', 'AgentRoutingHandler',
+            '/api/agent-evaluation', 'AgentEvaluationHandler',
             '/api/access-keys', 'ApiAccessKeysHandler',
             '/v1/health', 'PublicApiHealthHandler',
             '/v1/chat/completions', 'PublicApiChatHandler',
@@ -2430,6 +2482,7 @@ class WebChannel(ChatChannel):
             _log_bind_failure(host, port, e)
             raise
         SERVING.set()
+        self._ppt_handoff.resume_pending()
         _log_startup_banner()
         try:
             server.serve()
@@ -9955,6 +10008,9 @@ class ChannelHealthHandler:
         elif channel_name == "weixin" and health.get("token_ready") is False:
             next_action = "从手机微信给 Agent 发一句话刷新会话，待发送队列会自动补发"
             risk = "发送令牌待刷新"
+        elif channel_name == "weixin" and health.get("last_send_error"):
+            next_action = "最近一次发送被接口拒绝，可测试通道复核；有效期内的任务结果会进入待补发"
+            risk = "最近发送失败"
         elif channel_name == "wecom_bot":
             next_action = "点击重连企业微信，或在企业微信里给 Agent 发一条消息绑定会话"
             risk = "长连接需恢复"
@@ -9986,6 +10042,10 @@ class ChannelHealthHandler:
         elif channel_name == "weixin" and health.get("token_ready") is False:
             state = "expired"
             label = "会话过期"
+            can_send = False
+        elif channel_name == "weixin" and health.get("last_send_error"):
+            state = "send_error"
+            label = "发送异常"
             can_send = False
         elif str(runtime.get("state") or "") in {"reconnecting", "subscribe_failed", "stale", "unknown"}:
             state = "connecting"
@@ -10052,6 +10112,7 @@ class ChannelHealthHandler:
                 token_ready = False
                 last_seen = ""
                 token_message = ""
+                last_send_error = ""
                 try:
                     from channel.channel_access_service import get_channel_access_service
                     approved_entries = get_channel_access_service().list("weixin", "approved", "").get("entries", [])
@@ -10063,6 +10124,7 @@ class ChannelHealthHandler:
                     mgr = getattr(sys.modules.get('__main__'), '_channel_mgr', None) or getattr(sys.modules.get('app'), '_channel_mgr', None)
                     ch = mgr.get_channel("weixin") if mgr else None
                     runtime = ch.get_health_status() if ch and hasattr(ch, "get_health_status") else {}
+                    last_send_error = str(getattr(ch, "_last_send_error", "") or "") if ch else ""
                     for entry in approved_entries:
                         receiver_id = str(entry.get("user_id") or "").strip()
                         if not last_seen:
@@ -10099,8 +10161,10 @@ class ChannelHealthHandler:
                     runtime = {}
                 runtime_ok = bool((runtime or {}).get("ok", True))
                 runtime_state = str((runtime or {}).get("state") or "")
-                ok = active and status == "logged_in" and runtime_ok and approved > 0 and token_ready
-                if ok:
+                ok = active and status == "logged_in" and runtime_ok and approved > 0 and token_ready and not last_send_error
+                if last_send_error and active and status == "logged_in":
+                    message = f"微信已登录，但最近一次发送失败：{last_send_error}"
+                elif ok:
                     message = "微信已登录，且存在可发送会话"
                 elif active and status == "logged_in" and not runtime_ok:
                     message = "微信长轮询连接异常，系统正在自动重连"
@@ -10112,6 +10176,7 @@ class ChannelHealthHandler:
                                "message": message,
                                "receiver_hint": f"{approved} 个已授权会话" + ("，可发送" if token_ready else "，待刷新") if approved else "",
                                "token_ready": token_ready,
+                               "last_send_error": last_send_error,
                                "last_seen_at": last_seen,
                                "runtime": runtime or {"state": runtime_state}})
             elif channel_name == "wecom_bot":
@@ -10235,12 +10300,30 @@ class ChannelHealthHandler:
         _require_sensitive_local_access()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(channel="")
+            params = web.input(channel="", trace="")
             names = ["web"] + list(ChannelsHandler.CHANNEL_DEFS.keys())
             if params.channel:
                 names = [str(params.channel)]
             items = [self._channel_health(name) for name in names]
-            return json.dumps({"status": "success", "channels": items}, ensure_ascii=False)
+            result = {"status": "success", "channels": items}
+            try:
+                from integrations.desktop_control.session import desktop_session_status
+                result["desktop_session"] = desktop_session_status()
+                result["background_process_running"] = True
+            except Exception as error:
+                result["desktop_session"] = {"available": False, "state": "unknown", "reason": str(error)}
+            if str(params.trace or "") == "1" and str(params.channel or "") == "weixin":
+                from common.task_trace import read_events
+                from agent.execution.task_state import TaskStateStore
+                trace_rows = [row for row in read_events(Path(get_data_root()) / "intelligence_center")
+                              if row.get("source") == "weixin"]
+                ids = list(dict.fromkeys(str(row.get("id")) for row in reversed(trace_rows)))[:10]
+                states = TaskStateStore(Path(get_data_root()) / "intelligence_center" / "task_states")
+                result["traces"] = [{"run_id": run_id,
+                                     "events": [row for row in trace_rows if str(row.get("id")) == run_id][-30:],
+                                     "task_state": states.read(run_id)}
+                                    for run_id in ids]
+            return json.dumps(result, ensure_ascii=False)
         except Exception as error:
             return json.dumps({"status": "error", "message": str(error)}, ensure_ascii=False)
 
@@ -10357,8 +10440,9 @@ class ChannelHealthHandler:
                     raise ValueError(f"通道 {channel_name} 返回发送失败" + (f"：{detail}" if detail else ""))
                 self._audit_channel_test(channel_name, "send", "success", "通道已接受测试消息发送请求", receiver=receiver, run_id=run_id)
                 self._audit_channel_test(channel_name, "verify", "success", "测试消息发送流程已完成", receiver=receiver, run_id=run_id)
-            self._persist_channel_test_event(channel_name, True, "测试消息已发送", content, receiver=receiver or "web_user", run_id=run_id, delivery_status="success")
-            return json.dumps({"status": "success", "message": "测试消息已发送", "channel": channel_name}, ensure_ascii=False)
+            accepted_message = "测试消息已保存至 Web 消息中心" if channel_name == "web" else "通道接口已接受测试消息；请在接收端核对是否到达"
+            self._persist_channel_test_event(channel_name, True, accepted_message, content, receiver=receiver or "web_user", run_id=run_id, delivery_status="success")
+            return json.dumps({"status": "success", "message": accepted_message, "channel": channel_name}, ensure_ascii=False)
         except Exception as error:
             self._audit_channel_test(channel_name or "unknown", "send", "failed", str(error), receiver=receiver, run_id=run_id)
             self._persist_channel_test_event(channel_name, False, str(error), "通知通道测试失败", receiver=receiver, run_id=run_id, delivery_status="failed")
@@ -10404,8 +10488,8 @@ class ChannelHealthHandler:
                     "success": bool(success),
                     "message": message or "",
                     "delivery_status": delivery_status or ("success" if success else "failed"),
-                    "verified": bool(success),
-                    "verification_message": "测试消息已发送并记录轨迹" if success else message or "测试消息发送失败",
+                    "verified": bool(success and channel_name == "web"),
+                    "verification_message": ("Web 消息中心已保存测试消息" if channel_name == "web" else "通道接口已接受，实际到达需在接收端核对") if success else message or "测试消息发送失败",
                 }],
                 summary or message or "",
             )
@@ -15619,6 +15703,192 @@ class IntelligenceBrowserRecordingsHandler:
         except Exception as error:return json.dumps({"status":"error","message":str(error)},ensure_ascii=False)
 
 
+class DesktopControlHandler:
+    """Computer-control settings and local MCP registration."""
+
+    _install_lock = threading.RLock()
+    _install_jobs = {}
+
+    @staticmethod
+    def _policy_file():
+        return os.path.join(get_data_root(), "integrations", "desktop_control.json")
+
+    @staticmethod
+    def _runtime():
+        from pathlib import Path
+        if getattr(sys, "frozen", False):
+            return sys.executable
+        root = Path(__file__).resolve().parents[2]
+        candidates = [root / ".venv" / "Scripts" / "python.exe"]
+        if not getattr(sys, "frozen", False):
+            candidates.append(Path(sys.executable))
+        for candidate in candidates:
+            if candidate.is_file():
+                probe = subprocess.run(
+                    [str(candidate), "-c", "import pywinauto"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    timeout=5, check=False,
+                )
+                if probe.returncode == 0:
+                    return str(candidate)
+        return ""
+
+    @classmethod
+    def _snapshot(cls):
+        from integrations.desktop_control.policy import APPS, read_policy, running_processes
+        from integrations.desktop_control.installer import (PACKAGE_IDS, EXCEL_INSTALL_URL,
+                                                            installed_executable, winget_path)
+        policy = read_policy(cls._policy_file())
+        running = set(running_processes().values())
+        winget_ready = bool(winget_path())
+        with cls._install_lock:
+            jobs = {key: dict(value) for key, value in cls._install_jobs.items()}
+        apps = []
+        for key, meta in APPS.items():
+            active = bool(meta["processes"] & running)
+            executable = installed_executable(key)
+            apps.append({"id": key, "name": meta["name"], "running": active,
+                         "installed": active or bool(executable), "can_launch": bool(executable),
+                         "can_install": key in PACKAGE_IDS and winget_ready,
+                         "install_url": EXCEL_INSTALL_URL if key == "excel" else "",
+                         "install_job": jobs.get(key),
+                         "allowed": policy["any_app"] or policy["apps"].get(key, False)})
+        return {"status": "success", "policy": policy, "apps": apps,
+                "runtime_ready": bool(cls._runtime()),
+                "platform_ready": os.name == "nt", "winget_ready": winget_ready}
+
+    @classmethod
+    def _enable_app(cls, app):
+        from integrations.desktop_control.policy import APPS, read_policy, write_policy
+        if app not in APPS:
+            raise ValueError("不支持的应用")
+        policy = read_policy(cls._policy_file())
+        policy["apps"][app] = True
+        policy = write_policy(policy, cls._policy_file())
+        cls._sync_mcp(policy["any_app"] or any(policy["apps"].values()), cls._runtime())
+
+    @classmethod
+    def _install_worker(cls, app):
+        from integrations.desktop_control.installer import install_app, installed_executable, launch_app
+        try:
+            success, message = install_app(app)
+            if not success:
+                raise RuntimeError(message)
+            executable = ""
+            for _ in range(10):
+                executable = installed_executable(app)
+                if executable:
+                    break
+                time.sleep(1)
+            if not executable:
+                raise RuntimeError("安装命令已完成，但尚未识别到应用；请启动应用后刷新状态")
+            cls._enable_app(app)
+            try:
+                launch_app(app)
+                message = "安装完成，权限已启用，应用已启动"
+            except Exception:
+                message = "安装完成且权限已启用，请手动启动应用"
+            with cls._install_lock:
+                cls._install_jobs[app] = {"state": "success", "message": message}
+        except Exception as error:
+            logger.warning(f"[DesktopControl] install {app} failed: {error}")
+            with cls._install_lock:
+                cls._install_jobs[app] = {"state": "error", "message": str(error)[:500]}
+
+    @classmethod
+    def _sync_mcp(cls, enabled, runtime):
+        helper = ToolConnectorsHandler()
+        root = helper._read_mcp_root()
+        servers = root.get("mcpServers") or {}
+        name = "cow-desktop-control"
+        if enabled and runtime:
+            from pathlib import Path
+            script = Path(__file__).resolve().parents[2] / "integrations" / "desktop_control" / "server.py"
+            args = ["--desktop-mcp"] if getattr(sys, "frozen", False) else [str(script)]
+            servers[name] = {"command": runtime, "args": args,
+                             "env": {"COW_DESKTOP_CONTROL_CONFIG": cls._policy_file()}}
+        else:
+            servers.pop(name, None)
+        root["mcpServers"] = servers
+        path = helper._mcp_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        temporary = path + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as handle:
+            json.dump(root, handle, ensure_ascii=False, indent=2)
+        os.replace(temporary, path)
+
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        return json.dumps(self._snapshot(), ensure_ascii=False)
+
+    def PUT(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            from integrations.desktop_control.policy import write_policy
+            data = json.loads(web.data() or b"{}")
+            if not isinstance(data, dict):
+                raise ValueError("设置格式错误")
+            policy = write_policy(data, self._policy_file())
+            runtime = self._runtime()
+            enabled = policy["any_app"] or any(policy["apps"].values())
+            self._sync_mcp(enabled, runtime)
+            result = self._snapshot()
+            if enabled and not runtime:
+                result["message"] = "设置已保存，但缺少 pywinauto 运行环境，桌面工具尚未启用"
+            else:
+                result["message"] = "电脑操控设置已保存"
+            return json.dumps(result, ensure_ascii=False)
+        except Exception as error:
+            logger.exception("[DesktopControl] failed to save settings")
+            return json.dumps({"status": "error", "message": str(error)}, ensure_ascii=False)
+
+    def POST(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            from integrations.desktop_control.policy import APPS
+            from integrations.desktop_control.installer import PACKAGE_IDS, installed_executable, launch_app
+            data = json.loads(web.data() or b"{}")
+            app = str(data.get("app") or "").strip().lower()
+            action = str(data.get("action") or "").strip().lower()
+            if app not in APPS:
+                raise ValueError("不支持的应用")
+            if action == "launch":
+                if installed_executable(app):
+                    launch_app(app)
+                elif not any(app_meta["id"] == app and app_meta["running"]
+                             for app_meta in self._snapshot()["apps"]):
+                    raise FileNotFoundError("应用尚未安装")
+                self._enable_app(app)
+                result = self._snapshot()
+                result["message"] = "应用已启动，电脑操控权限已启用"
+                return json.dumps(result, ensure_ascii=False)
+            if action != "install" or app not in PACKAGE_IDS:
+                raise ValueError("此应用不支持自动安装")
+            if installed_executable(app):
+                self._enable_app(app)
+                result = self._snapshot()
+                result["message"] = "应用已安装，电脑操控权限已启用"
+                return json.dumps(result, ensure_ascii=False)
+            with self._install_lock:
+                job = self._install_jobs.get(app) or {}
+                if job.get("state") != "running":
+                    if any(key != app and value.get("state") == "running"
+                           for key, value in self._install_jobs.items()):
+                        raise RuntimeError("另一项应用安装正在进行，请完成后再安装")
+                    self._install_jobs[app] = {"state": "running", "message": "正在安装…"}
+                    threading.Thread(target=self._install_worker, args=(app,), daemon=True,
+                                     name=f"desktop-install-{app}").start()
+            result = self._snapshot()
+            result["message"] = "安装已开始；完成后将自动启用并启动应用"
+            return json.dumps(result, ensure_ascii=False)
+        except Exception as error:
+            logger.exception("[DesktopControl] installation action failed")
+            return json.dumps({"status": "error", "message": str(error)}, ensure_ascii=False)
+
+
 class ToolConnectorsHandler:
     CONFIG_FILE = "tool_connectors.json"
 
@@ -16587,6 +16857,55 @@ class MemoryWikiHandler:
             return json.dumps({"status": "error", "message": str(error)}, ensure_ascii=False)
 
 
+class AgentEvaluationHandler:
+    @staticmethod
+    def _cases_path():
+        return Path(__file__).resolve().parents[2] / "agent" / "evaluation" / "cases.json"
+
+    def GET(self):
+        _require_sensitive_local_access(); web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            from agent.evaluation.runner import evaluate, link_recorded_runs, load_cases, load_receipts
+            from common.task_trace import read_events
+            cases = load_cases(self._cases_path())
+            report = evaluate(cases, [])
+            private_path = Path.home() / ".cow" / "evaluations" / "real_cases.json"
+            private_cases = load_cases(private_path) if private_path.exists() else []
+            private_cases = link_recorded_runs(
+                private_cases, Path(get_data_root()) / "intelligence_center" / "task_states")
+            receipt_path = private_path.with_name("verified_receipts.json")
+            real_report = evaluate(
+                private_cases, read_events(Path(get_data_root()) / "intelligence_center"),
+                load_receipts(receipt_path) if receipt_path.exists() else None,
+            ) if private_cases else {}
+            return json.dumps({"status": "success", "summary": {key: value for key, value in report.items() if key != "cases"},
+                               "real_instruction_count": len(private_cases),
+                               "real_summary": {key: value for key, value in real_report.items() if key != "cases"}}, ensure_ascii=False)
+        except Exception as error:
+            return json.dumps({"status": "error", "message": str(error)}, ensure_ascii=False)
+
+    def POST(self):
+        _require_sensitive_local_access(); web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or b"{}")
+            if body.get("action") == "collect_failures":
+                from agent.evaluation.failure_cases import save_failure_cases
+                root = Path(get_data_root())
+                result = save_failure_cases(root / "logs" / "tool_audit.jsonl",
+                                            root / "intelligence_center" / "task_states",
+                                            Path.home() / ".cow" / "evaluations" / "failure_cases.json")
+                return json.dumps({"status": "success", **result}, ensure_ascii=False)
+            from agent.evaluation.collect import collect
+            from agent.memory import get_conversation_store
+            cases = collect(get_conversation_store(), 100)
+            private_path = Path.home() / ".cow" / "evaluations" / "real_cases.json"
+            private_path.parent.mkdir(parents=True, exist_ok=True)
+            private_path.write_text(json.dumps(cases, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            return json.dumps({"status": "success", "real_instruction_count": len(cases)}, ensure_ascii=False)
+        except Exception as error:
+            return json.dumps({"status": "error", "message": str(error)}, ensure_ascii=False)
+
+
 class FactStoreHandler:
     @staticmethod
     def _service():
@@ -16686,6 +17005,16 @@ class FactStoreHandler:
         try:
             body = json.loads(web.data() or b"{}")
             action = str(body.get("action") or "").strip().lower()
+            if action == "correct":
+                item = self._service().correct(str(body.get("id") or body.get("fact_id") or ""), str(body.get("content") or ""))
+                return json.dumps({"status": "success", "item": item}, ensure_ascii=False)
+            if action == "set_constraints":
+                item = self._service().set_constraints(
+                    str(body.get("id") or body.get("fact_id") or ""),
+                    valid_until=str(body.get("valid_until") or ""),
+                    applies_to=str(body.get("applies_to") or ""),
+                )
+                return json.dumps({"status": "success", "item": item}, ensure_ascii=False)
             status = {
                 "bulk_approve": "active",
                 "bulk_confirm": "active",
@@ -18769,8 +19098,26 @@ class SchedulerHandler:
         _require_auth(); web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body=json.loads(web.data() or b"{}");name=str(body.get("name") or "").strip();content=str(body.get("content") or "").strip();action_type=body.get("action_type","agent_task");schedule_type=body.get("schedule_type","interval")
+            template_type=str(body.get("template_type") or "").strip()
             if not name or not content:raise ValueError("任务名称和执行内容不能为空")
-            if action_type not in ("agent_task","send_message"):raise ValueError("不支持的任务内容类型")
+            if action_type not in ("agent_task","send_message","tool_call") or (action_type=="tool_call" and template_type!="weather_hourly_brief"):
+                raise ValueError("不支持的任务内容类型")
+            weather_template=None
+            if template_type:
+                if template_type!="weather_hourly_brief" or action_type!="tool_call":raise ValueError("不支持的定时任务模板")
+                location=str(body.get("weather_location") or "").strip()
+                if not location or len(location)>80:raise ValueError("请填写有效的天气地区")
+                try:
+                    start_time=str(body.get("weather_start_time") or f'{int(body.get("weather_hour_start")):02d}:00')
+                    end_time=str(body.get("weather_end_time") or f'{int(body.get("weather_hour_end")):02d}:00')
+                    if len(start_time)!=5 or len(end_time)!=5:raise ValueError()
+                    start_clock=datetime.time.fromisoformat(start_time)
+                    end_clock=datetime.time.fromisoformat(end_time)
+                except (TypeError,ValueError):raise ValueError("请设置天气关注时段")
+                if start_clock>=end_clock:raise ValueError("天气关注结束时间须晚于开始时间")
+                hour_start=start_clock.hour
+                hour_end=min(23,end_clock.hour+int(end_clock.minute>0))
+                weather_template={"type":"weather_hourly_brief","location":location,"start_time":start_time,"end_time":end_time,"hour_start":hour_start,"hour_end":hour_end}
             if schedule_type=="cron":
                 expression=str(body.get("cron") or "").strip()
                 if len(expression.split()) not in (5,6):raise ValueError("Cron 表达式应包含 5 或 6 段")
@@ -18805,7 +19152,10 @@ class SchedulerHandler:
                 if not any(item.get("user_id")==receiver for item in approved):raise ValueError("该微信用户尚未授权")
             action={"type":action_type,"receiver":receiver,"receiver_name":receiver_name,"is_group":is_group,"channel_type":channel_type,"notify_session_id":str(body.get("session_id") or receiver)}
             if channel_type=="webhook" and receiver!="configured_webhook":action["webhook_url"]=receiver
-            action["task_description" if action_type=="agent_task" else "content"]=content
+            if weather_template:
+                action.update({"template":weather_template,"call_name":"weather","call_params":{"location":weather_template["location"],"hour_start":weather_template["hour_start"],"hour_end":weather_template["hour_end"]},"task_description":content})
+            else:
+                action["task_description" if action_type=="agent_task" else "content"]=content
             if action_type=="agent_task" and body.get("silent"):action["silent"]=True
             task={"id":task_id,"name":name,"enabled":True,"created_at":now.isoformat(),"updated_at":now.isoformat(),"schedule":schedule,"action":action}
             next_run=SchedulerService(store,lambda task:None)._calculate_next_run(task,now)
@@ -19158,7 +19508,7 @@ class SessionsHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(page='1', page_size='50', agent='')
+            params = web.input(page='1', page_size='50', agent='', archived='0')
             agent_id = params.agent or None
             from agent.memory import get_conversation_store
             store = get_conversation_store()
@@ -19166,6 +19516,7 @@ class SessionsHandler:
                 channel_type="web",
                 page=int(params.page),
                 page_size=int(params.page_size),
+                archived=str(params.archived) == '1',
             )
             _annotate_sessions_with_projects(store, result, agent_id)
             return json.dumps({"status": "success", **result}, ensure_ascii=False)
@@ -19175,6 +19526,28 @@ class SessionsHandler:
 
 
 class SessionDetailHandler:
+    def POST(self, session_id: str):
+        """Open the folder bound to a session on this local desktop."""
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or b"{}")
+            if body.get("action") != "open_folder":
+                raise ValueError("不支持的操作")
+            from agent.workspace import project_store
+            path = project_store.get_project_dir(session_id)
+            if not path or not os.path.isdir(path):
+                raise FileNotFoundError("该任务未关联文件夹")
+            if os.name == "nt":
+                os.startfile(path)
+            else:
+                import subprocess
+                import sys
+                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
+            return json.dumps({"status": "success"}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
+
     def DELETE(self, session_id: str):
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -19236,7 +19609,7 @@ class SessionDetailHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def PUT(self, session_id: str):
-        """Update a session's title and/or its pinned flag."""
+        """Update a session's title, pinned flag, or archive state."""
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
@@ -19245,8 +19618,9 @@ class SessionDetailHandler:
             body = json.loads(web.data())
             title = (body.get("title") or "").strip()
             pinned = body.get("pinned")
-            if not title and pinned is None:
-                return json.dumps({"status": "error", "message": "title or pinned required"})
+            archived = body.get("archived")
+            if not title and pinned is None and archived is None:
+                return json.dumps({"status": "error", "message": "title, pinned or archived required"})
 
             from agent.memory import get_conversation_store
             store = get_conversation_store()
@@ -19256,6 +19630,8 @@ class SessionDetailHandler:
                 found = store.rename_session(session_id, title)
             if pinned is not None:
                 found = store.set_pinned(session_id, bool(pinned)) and found
+            if archived is not None:
+                found = store.set_archived(session_id, bool(archived)) and found
             if not found:
                 # A session only gets a row once its first message is stored, so
                 # this is also what a pin on a brand-new empty chat looks like.
@@ -20194,7 +20570,7 @@ def _project_state(session_id: str, agent_id: str = None) -> dict:
     current = project_store.get_project_dir(session_id, agent_id) if session_id else None
     return {
         "current": (
-            {"path": current, "name": os.path.basename(current) or current}
+            {"path": current, "name": project_store.display_name_for(current)}
             if current else None
         ),
         "default_workspace": state_root_str(),
@@ -20205,13 +20581,13 @@ def _project_state(session_id: str, agent_id: str = None) -> dict:
 
 def _project_workspace_service():
     from intelligence_center.project_workspace_service import get_project_workspace_service
-    root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "intelligence_center")
+    root = os.path.join(get_data_root(), "intelligence_center")
     return get_project_workspace_service(root)
 
 
 def _collaboration_service():
     from intelligence_center.collaboration_service import CollaborationService
-    root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "intelligence_center")
+    root = os.path.join(get_data_root(), "intelligence_center")
     return CollaborationService(root)
 
 
@@ -20236,7 +20612,19 @@ class ProjectWorkspacesHandler:
         try:
             body = json.loads(web.data() or b"{}")
             action = body.pop("action", "create")
-            if action == "add_task":
+            if action == "ensure_chat_space":
+                item = _project_workspace_service().ensure_chat_space(body.get("id", ""))
+            elif action == "open_folder":
+                item = _project_workspace_service().get(body.get("id", ""))
+                if item is None or not item.get("workspace_path") or not os.path.isdir(item["workspace_path"]):
+                    raise FileNotFoundError("该任务未关联文件夹")
+                if os.name == "nt":
+                    os.startfile(item["workspace_path"])
+                else:
+                    import subprocess
+                    import sys
+                    subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", item["workspace_path"]])
+            elif action == "add_task":
                 project_id=body.pop("id", ""); item = _project_workspace_service().add_task(project_id, body); _collaboration_service().log(project_id,"task.created",f"创建项目任务：{body.get('name','新任务')}")
             elif action == "update_task":
                 project_id=body.pop("id", ""); task_id=body.pop("task_id", ""); item=_project_workspace_service().update_task(project_id, task_id, body); _collaboration_service().log(project_id,"task.updated",f"更新项目任务：{body.get('name','')}")
@@ -20305,7 +20693,7 @@ class ArtifactsHandler:
     @staticmethod
     def _service():
         from intelligence_center.artifact_service import get_artifact_service
-        root = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "intelligence_center")
+        root = os.path.join(get_data_root(), "intelligence_center")
         return get_artifact_service(root)
 
     def GET(self):

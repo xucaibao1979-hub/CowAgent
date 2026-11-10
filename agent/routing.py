@@ -150,6 +150,7 @@ _CONCEPT_ALIASES = {
 }
 
 _INTENTS = {
+    "desktop": ("打开企业微信", "企业微信给", "控制电脑", "操控电脑", "桌面软件", "电脑上的软件", "打开电脑里面", "打开 excel", "打开 chrome", "打开 edge", "desktop"),
     "weather": ("天气", "气温", "降雨", "weather", "forecast"),
     "email": ("邮件", "邮箱", "收件箱", "email", "mail", "inbox"),
     "file": ("文件", "目录", "本地文档", "查找电脑", "file", "folder"),
@@ -161,11 +162,12 @@ _INTENTS = {
 }
 
 _TOOL_HINTS = {
+    "desktop": ("desktop_open_app", "desktop_wecom_search_contact", "vision", "desktop_wecom_select_contact", "desktop_wecom_prepare_file", "desktop_wecom_send_staged_file", "search_files", "desktop_wecom_prepare_text", "desktop_wecom_send_staged_text", "desktop_capture_window", "desktop_click_at", "desktop_type_focused", "desktop_press_key"),
     "weather": ("weather",),
     "email": ("local_email", "send"),
     "file": ("search_files", "read", "ls"),
     "web": ("web_search", "web_fetch", "browser"),
-    "browser": ("browser", "web_fetch"),
+    "browser": ("desktop_browser_list_tabs", "desktop_browser_wake_tab", "desktop_browser_select_tab", "desktop_browser_navigate_tab", "desktop_browser_open_tab", "desktop_browser_read_page", "browser", "web_fetch"),
     "automation": ("scheduler", "send"),
     "code": ("read", "search_files", "edit", "write", "bash"),
     "memory": ("memory_search", "memory_get"),
@@ -173,6 +175,7 @@ _TOOL_HINTS = {
 }
 
 _AGENT_INTENT_HINTS = {
+    "desktop": ("本地", "桌面操作"),
     "weather": ("网络搜索", "信息获取"),
     "email": ("邮件",),
     "file": ("文件", "本地"),
@@ -506,6 +509,22 @@ def _personal_route_hints(message: str, intent: str, limit: int = 6) -> dict:
 
 def _intent_for(text: str) -> str:
     lowered = text.lower()
+    if any(word in lowered for word in ("阿里云", "控制台", "账单", "账户余额", "费用余额")) and any(word in lowered for word in ("查询", "查看", "看看", "余额", "登录", "网页", "网站")):
+        return "browser"
+    if any(word in lowered for word in ("已经打开", "已打开", "已经登录", "已登录")) and any(word in lowered for word in ("网页", "浏览器", "页面", "网站")):
+        return "browser"
+    if any(word in lowered for word in ("网页", "页面", "网站")) and any(word in lowered for word in ("点击", "填写", "导出", "提交", "核对结果", "网页操作")):
+        return "browser"
+    if re.search(r"(?:打开|启动|操作|控制).{0,30}(?:企业微信|钉钉|飞书|excel|chrome|edge)", lowered):
+        return "desktop"
+    if re.search(r"(?:通过|用|在)(?:企业微信|钉钉|飞书).{0,50}(?:发送|发给|传给)", lowered):
+        return "desktop"
+    if any(word in lowered for word in ("提醒", "定时", "自动化", "执行时间", "补发")) and any(
+        word in lowered for word in ("创建", "设置", "每天", "工作日", "修改", "改为", "任务", "发送", "过期", "补发")
+    ):
+        return "automation"
+    if any(word in lowered for word in ("有雨", "预报", "逐小时")) and not any(word in lowered for word in ("新闻", "资讯")):
+        return "weather"
     scored = [(sum(1 for word in words if word in lowered), name) for name, words in _INTENTS.items()]
     score, name = max(scored, default=(0, "general"))
     return name if score else "general"
@@ -520,13 +539,36 @@ def _tool_candidates(message: str, tools: Optional[Sequence[Any]], intent: str, 
         for width in (2, 3, 4):
             tokens.update(run[i:i + width] for i in range(max(0, len(run) - width + 1)))
     preferred = _TOOL_HINTS.get(intent, ())
+    if intent == "desktop":
+        is_file_send = any(word in lowered for word in ("文件", "附件", "图片", "照片", ".png", ".pdf", ".doc", ".xls"))
+        if is_file_send:
+            preferred = tuple(name for name in preferred if name not in
+                              ("desktop_wecom_prepare_text", "desktop_wecom_send_staged_text"))
+        else:
+            preferred = tuple(name for name in preferred if name not in
+                              ("search_files", "desktop_wecom_prepare_file", "desktop_wecom_send_staged_file"))
     preferred_rank = {name.lower(): idx for idx, name in enumerate(preferred)}
+    from agent.tools.capability_catalog import capability_for
+    tool_names = [str(getattr(tool, "name", "") or "") for tool in tools]
+    suppressed = set()
+    for name in tool_names:
+        meta = capability_for(name)
+        if meta["interactive"] or meta["side_effect"] is not False:
+            continue
+        if int((reliability_scores or {}).get(name, {}).get("recent_failures", 0)) < 3:
+            continue
+        if any(other != name and capability_for(other)["permission"] == meta["permission"]
+               and int((reliability_scores or {}).get(other, {}).get("recent_failures", 0)) < 3
+               for other in tool_names):
+            suppressed.add(name.lower())
     scored = []
     for tool in tools:
         name = str(getattr(tool, "name", "") or "")
         if not name:
             continue
         name_lower = name.lower()
+        if name_lower in suppressed:
+            continue
         haystack = f"{name} {getattr(tool, 'description', '')}".lower()
         score = 12 - preferred_rank[name_lower] if name_lower in preferred_rank else 0
         score += sum(1 for token in tokens if token in haystack)
@@ -543,6 +585,8 @@ def _tool_candidates(message: str, tools: Optional[Sequence[Any]], intent: str, 
     scored.sort(key=lambda item: (-item[0], item[1], item[2]))
     result = [name for _, _, name in scored[:limit]]
     for name in preferred:
+        if name.lower() in suppressed:
+            continue
         matched = next((getattr(t, "name", "") for t in tools if str(getattr(t, "name", "")).lower() == name.lower()), "")
         if matched and matched not in result:
             result.append(matched)
@@ -717,7 +761,7 @@ def route_request(message: str, global_model: str, skill_manager=None, fast_mode
     intent = _intent_for(text)
     risky = any(word in lowered for word in ("发送", "发给", "删除", "写入", "修改", "执行", "安装", "登录", "购买", "发布", "实现", "修复", "部署", "send", "delete", "write", "execute", "install", "login", "implement", "fix", "deploy"))
     risk = "high" if any(word in lowered for word in ("删除", "购买", "发布", "付款", "delete", "purchase", "publish")) else ("medium" if risky else "low")
-    if intent in {"browser", "file", "email", "automation"} and risky:
+    if intent in {"desktop", "browser", "file", "email", "automation"} and risky:
         score += 2
         reasons.append("需要工具闭环执行")
     if any(word in lowered for word in ("登录", "扫码", "验证码", "二次验证", "login", "captcha", "mfa")):
@@ -775,4 +819,29 @@ def route_request(message: str, global_model: str, skill_manager=None, fast_mode
             skill_candidates.append(name)
     if self_training_skill_hints.get("names"):
         reasons.append("已优先匹配自我训练正式 Skill")
+    if intent == "weather" and "weather" in candidates and not any(
+        word in lowered for word in ("发送", "发给", "推送", "提醒", "通知", "send", "notify")
+    ):
+        candidates = ["weather"] + [item for item in candidates if item != "weather"]
+    from agent.tools.capability_catalog import capability_for
+    healthy = [name for name in candidates if int(reliability_scores.get(name, {}).get("recent_failures", 0)) < 3]
+    candidates = [name for name in candidates if not (
+        int(reliability_scores.get(name, {}).get("recent_failures", 0)) >= 3
+        and capability_for(name)["interactive"] is False
+        and capability_for(name)["side_effect"] is False
+        and any(other != name and capability_for(other)["permission"] == capability_for(name)["permission"]
+                for other in healthy)
+    )]
+    if os.name == "nt" and intent in {"desktop", "browser"} and any(
+        name.startswith("desktop_") for name in candidates
+    ):
+        try:
+            from integrations.desktop_control.session import desktop_session_status
+            desktop_state = desktop_session_status()
+            if not desktop_state.get("available"):
+                candidates = [name for name in candidates if not name.startswith("desktop_")
+                              or name == "desktop_session_status"]
+                reasons.append(desktop_state.get("reason") or "桌面画面当前不可用")
+        except Exception:
+            pass
     return RouteDecision(level, chosen, score, reasons or ["直接问答"], skill_candidates, agent_candidates, intent, risk, candidates, provider_order, fallback, memory_hints)

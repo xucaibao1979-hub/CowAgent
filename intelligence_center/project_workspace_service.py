@@ -80,6 +80,28 @@ class ProjectWorkspaceService:
             item["updated_at"] = self._now(); self._write(data)
             return deepcopy(item)
 
+    def ensure_chat_space(self, project_id: str) -> dict:
+        """Create one filesystem chat space for this project and remember its path."""
+        from agent.workspace import project_store
+
+        with self._lock:
+            data = self._read()
+            item = next((x for x in data["projects"] if x.get("id") == project_id), None)
+            if item is None:
+                raise KeyError("项目不存在")
+            root = os.path.realpath(project_store.projects_root())
+            path = os.path.realpath(os.path.join(root, f"space-{project_id}"))
+            if os.path.dirname(path) != root:
+                raise ValueError("无效的空间路径")
+            if not os.path.isdir(path):
+                project_store.create_project(f"space-{project_id}")
+            project_store.rename_project(path, item["name"])
+            if item.get("workspace_path") != path:
+                item["workspace_path"] = path
+                item["updated_at"] = self._now()
+                self._write(data)
+            return deepcopy(item)
+
     def delete(self, project_id: str) -> bool:
         with self._lock:
             data = self._read(); before = len(data["projects"])
@@ -92,7 +114,7 @@ class ProjectWorkspaceService:
         project = self.get(project_id)
         if project is None:
             raise KeyError("项目不存在")
-        task = {"id": uuid.uuid4().hex[:10], "name": str(payload.get("name") or "新任务").strip(), "content": str(payload.get("content") or "").strip(), "status": "todo", "created_at": self._now(), "updated_at": self._now()}
+        task = {"id": uuid.uuid4().hex[:10], "name": str(payload.get("name") or "新任务").strip(), "content": str(payload.get("content") or "").strip(), "status": "todo", "pinned": False, "created_at": self._now(), "updated_at": self._now()}
         project["tasks"].insert(0, task)
         return self.update(project_id, {"tasks": project["tasks"]})
 
@@ -105,7 +127,14 @@ class ProjectWorkspaceService:
             raise KeyError("任务不存在")
         for key in ("name", "content", "status"):
             if key in payload:
-                task[key] = str(payload[key]).strip()
+                value = str(payload[key]).strip()
+                if key == "status" and value == "archived":
+                    task["status_before_archive"] = task.get("status") or "todo"
+                if key == "status" and value == "restore":
+                    value = task.pop("status_before_archive", "todo")
+                task[key] = value
+        if "pinned" in payload:
+            task["pinned"] = bool(payload["pinned"])
         task["updated_at"] = self._now()
         return self.update(project_id, {"tasks": project["tasks"]})
 

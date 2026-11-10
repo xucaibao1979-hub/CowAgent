@@ -1095,7 +1095,8 @@ class AgentStreamExecutor:
 
         import uuid as _uuid
         from common.utils import set_agent_run_id, clear_agent_run_id
-        self._audit_run_id = _uuid.uuid4().hex
+        from common.runtime_identity import current_identity
+        self._audit_run_id = current_identity().run_id or _uuid.uuid4().hex
         _run_token = set_agent_run_id(self._audit_run_id)
         cancelled = False
         try:
@@ -1556,12 +1557,13 @@ class AgentStreamExecutor:
         # Put deterministic router choices first in the schema. Providers tend
         # to choose earlier, semantically-close tools more reliably, while all
         # available fallbacks remain visible if the preferred route cannot run.
-        preferred = list(getattr(self.routing_decision, "tool_candidates", None) or [])
+        route = getattr(self, "routing_decision", None)
+        preferred = list(getattr(route, "tool_candidates", None) or [])
         if preferred:
             rank = {str(name).lower(): index for index, name in enumerate(preferred)}
             try:
                 from agent.tools.reliability import ToolReliability
-                scores = ToolReliability().scores(str(getattr(self.routing_decision, "intent", "") or ""))
+                scores = ToolReliability().scores(str(getattr(route, "intent", "") or ""))
             except Exception:
                 scores = {}
             def route_rank(tool):
@@ -2096,6 +2098,11 @@ class AgentStreamExecutor:
         tool_name = tool_call["name"]
         tool_id = tool_call["id"]
         arguments = tool_call["arguments"]
+        try:
+            from common.task_trace import emit as emit_task_trace
+            emit_task_trace(None, "工具调用", "running", tool=tool_name)
+        except Exception:
+            pass
 
         if "_parse_error" in tool_call:
             result = {
@@ -2255,6 +2262,12 @@ class AgentStreamExecutor:
                 tool.event_callback = None
                 tool.tool_call_id = None
             execution_time = time.time() - start_time
+            try:
+                from common.task_trace import emit as emit_task_trace
+                emit_task_trace(None, "工具调用", "completed" if result.status == "success" else "failed",
+                                tool=tool_name, duration_ms=round(execution_time * 1000))
+            except Exception:
+                pass
 
             result_dict = {
                 "status": result.status,
@@ -2377,6 +2390,7 @@ class AgentStreamExecutor:
             return None
         try:
             from agent.permission import PermissionGateway
+            from common.runtime_identity import current_identity
 
             mode = agent.effective_permission_mode()
             connector_id = "mcp" if getattr(self.tools.get(tool_name), "server_name", None) else ""
@@ -2392,6 +2406,7 @@ class AgentStreamExecutor:
                 mode=mode, tool_name=tool_name, arguments=arguments,
                 cwd=agent.effective_cwd(), write_roots=agent.write_roots(),
                 connector_id=connector_id,
+                task_run_id=current_identity().run_id,
             )
         except Exception as e:
             logger.warning(f"[Permission] Check skipped for {tool_name}: {e}")
@@ -2479,9 +2494,9 @@ class AgentStreamExecutor:
         unrestricted behavior.
         """
         key = self._permission_key(tool_name, arguments)
-        if key in self._approved_permission_calls:
+        if key in getattr(self, "_approved_permission_calls", set()):
             return None
-        if key in self._rejected_permission_calls:
+        if key in getattr(self, "_rejected_permission_calls", set()):
             return "用户未批准本次组合操作，工具未执行。"
         decision = self._permission_decision(tool_name, arguments)
         if decision is None:

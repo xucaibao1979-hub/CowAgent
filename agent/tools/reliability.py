@@ -49,6 +49,8 @@ class ToolReliability:
                 "score": round(score, 4), "success_rate": round(success_rate, 4),
                 "successes": successes, "total": total,
                 "recent_failures": consecutive_failures,
+                "last_error_code": next((str(item.get("error_code") or "") for item in reversed(items)
+                                         if not item.get("success")), ""),
             }
         return result
 
@@ -125,8 +127,20 @@ class ToolReliability:
 
     def dashboard(self) -> dict:
         scores = self.scores()
+        from agent.tools.capability_catalog import capability_snapshot
+        from agent.tools.tool_manager import ToolManager
+        names = set(scores)
+        for manager in ToolManager.instances():
+            names.update(manager.tool_classes)
+            names.update(manager._mcp_tool_instances)
+        try:
+            from integrations.desktop_control.session import desktop_session_status
+            desktop_status = desktop_session_status()
+        except Exception:
+            desktop_status = None
         return {
             "tools": scores,
+            "capabilities": capability_snapshot(sorted(names), scores, desktop_status),
             "recovery_paths": self.recovery_paths(limit=5),
             "summary": {
                 "tracked_tools": len(scores),

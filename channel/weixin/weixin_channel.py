@@ -27,6 +27,7 @@ from common.expired_dict import ExpiredDict
 from common.log import logger
 from common.singleton import singleton
 from config import conf, get_data_root, get_weixin_credentials_path
+from common.runtime_identity import current_identity
 
 MAX_CONSECUTIVE_FAILURES = 3
 BACKOFF_DELAY = 30
@@ -92,6 +93,11 @@ class WeixinChannel(ChatChannel):
         # wait for the media path instead of reaching the agent without it.
         self._pending_media = {}
         self._pending_media_lock = threading.Lock()
+        # Short-lived filename context for follow-ups such as "文件名 正面.jpg".
+        self._recent_file_searches = {}
+        self._recent_file_searches_lock = threading.Lock()
+        self._pending_file_choices = {}
+        self._pending_file_choices_lock = threading.Lock()
         # msg_id -> processing notice state.  WeChat replies are produced by the
         # shared async ChatChannel worker, so this local watchdog gives users a
         # visible "I'm working" signal without touching the model pipeline.
@@ -117,8 +123,79 @@ class WeixinChannel(ChatChannel):
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
+    def _remember_file_choices(self, session_id: str, hits: list) -> None:
+        with self._pending_file_choices_lock:
+            self._pending_file_choices[session_id] = {
+                "at": time.time(),
+                "paths": [str(item.get("path") or "") for item in hits if item.get("path")][:20],
+                "run_id": current_identity().run_id,
+            }
+
+    def _take_file_choice(self, session_id: str, message: str):
+        """Return (is_selection, path, count); any new task drops stale choices."""
+        with self._pending_file_choices_lock:
+            pending = self._pending_file_choices.get(session_id)
+            if not pending:
+                return False, "", 0
+            if time.time() - pending["at"] > 900:
+                self._pending_file_choices.pop(session_id, None)
+                return False, "", 0
+            match = re.fullmatch(r"(?:就)?(?:发|发送|选)?\s*第\s*(\d{1,2})\s*(?:个|张|份)?(?:给我)?\s*", str(message or ""))
+            if not match:
+                self._pending_file_choices.pop(session_id, None)
+                return False, "", 0
+            paths = pending["paths"]
+            index = int(match.group(1)) - 1
+            if not 0 <= index < len(paths):
+                return True, "", len(paths)
+            self._pending_file_choices.pop(session_id, None)
+            if pending.get("run_id") and current_identity().run_id:
+                try:
+                    from agent.execution.task_state import TaskStateStore
+                    TaskStateStore(os.path.join(get_data_root(), "intelligence_center", "task_states")).link_parent(
+                        current_identity().run_id, pending["run_id"])
+                except Exception:
+                    pass
+            return True, paths[index], len(paths)
+
+    def _send_local_file_match(self, selected: dict, receiver: str, context_token: str,
+                               record_session_id: str, request_text: str) -> bool:
+        from common.task_trace import get_send_status
+        from common.file_evidence import inspect_file_evidence
+        path = str(selected.get("path") or "")
+        name = str(selected.get("name") or os.path.basename(path))
+        try:
+            inspect_file_evidence(path, request_text)
+        except (OSError, ValueError) as error:
+            self._send_text(f"文件核验未通过：{error}", receiver, context_token)
+            return False
+        suffix = os.path.splitext(path)[1].lower()
+        if suffix in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}:
+            accepted = bool(self._send_image(path, receiver, context_token))
+        else:
+            accepted = bool(self._send_file(path, receiver, context_token))
+        self._record_weixin_tool_audit(
+            "weixin:file_send", request_text, accepted,
+            ("微信接口已接受文件：" if accepted else
+             "文件发送状态待核验：" if get_send_status() == "unconfirmed" else
+             "文件发送失败：") + name,
+            "file", 0,
+        )
+        if accepted:
+            self._persist_direct_exchange(record_session_id, request_text, f"微信接口已接受文件：{name}")
+        else:
+            self._record_weixin_send_failure(None, f"文件发送失败：{name}")
+        logger.info("[Weixin] File send accepted=%s name=%s", accepted, name)
+        return accepted
+
     def startup(self):
         self._stop_event.clear()
+
+        try:
+            from agent.execution.task_state import TaskStateStore
+            TaskStateStore(os.path.join(get_data_root(), "intelligence_center", "task_states")).recover_interrupted()
+        except Exception as error:
+            logger.warning("[Weixin] Task state recovery scan failed: %s", error)
 
         # Build filename metadata in the background.  WeChat file lookups can
         # then return in one local query instead of spending several LLM/tool
@@ -493,6 +570,7 @@ class WeixinChannel(ChatChannel):
                 return True
             items.append({
                 "id": digest,
+                "kind": "proactive",
                 "receiver": receiver,
                 "aliases": sorted(aliases),
                 "text": text,
@@ -527,6 +605,10 @@ class WeixinChannel(ChatChannel):
             remaining = []
             sent = 0
             for item in self._read_pending_pushes():
+                # Legacy queue entries were interactive replies.  Replaying
+                # them on the next user message mixes unrelated tasks.
+                if item.get("kind") != "proactive":
+                    continue
                 item_aliases = set(item.get("aliases") or self._receiver_aliases(item.get("receiver", "")))
                 if int(item.get("queued_ts") or 0) < cutoff:
                     continue
@@ -884,6 +966,7 @@ class WeixinChannel(ChatChannel):
 
     @_trace_entry
     def _process_authorized_message(self, raw_msg, from_user, context_token):
+        from common.task_trace import emit as trace_emit
         session_id = from_user
         record_session_id = self._conversation_session_id(from_user)
         # Mark media as in-flight *before* the (slow) synchronous download so a
@@ -952,19 +1035,79 @@ class WeixinChannel(ChatChannel):
             # so ordinary requests and file actions still use the full Agent.
             try:
                 from common.local_file_index import (
-                    format_file_search_reply, get_local_file_index,
+                    FileSearchIntent, format_file_search_reply, get_local_file_index,
                     parse_file_search_intent,
                 )
+                is_selection, selected_path, choice_count = self._take_file_choice(
+                    record_session_id, wx_msg.content,
+                )
+                if is_selection:
+                    if selected_path:
+                        selected_intent = FileSearchIntent(
+                            query=os.path.basename(selected_path),
+                            extensions=set(), explicit_path=selected_path,
+                        )
+                        matches = get_local_file_index().search(selected_intent)
+                        if matches:
+                            self._send_local_file_match(
+                                matches[0], from_user, context_token,
+                                record_session_id, wx_msg.content,
+                            )
+                            return
+                        reply_text = "刚才选中的文件已移动、删除或不再位于授权目录，请重新提供路径。"
+                    else:
+                        reply_text = f"候选文件只有 {choice_count} 个，请回复有效编号，例如“发送第1个”。"
+                    if self.api and context_token:
+                        self._send_text(reply_text, from_user, context_token)
+                    return
                 intent = parse_file_search_intent(wx_msg.content)
+                if intent is None and re.search(r"(?:[A-Za-z][：:]?\s*盘|png|jpe?g|照片|图片)", wx_msg.content, re.I):
+                    with self._recent_file_searches_lock:
+                        recent = self._recent_file_searches.get(record_session_id)
+                    if recent and time.time() - recent["at"] <= 900 and recent.get("query"):
+                        intent = FileSearchIntent(
+                            recent["query"], set(recent.get("extensions") or []), limit=20,
+                        )
                 if intent is not None:
+                    trace_emit(None, "选择快捷路径", "selected", route="file_search")
+                    supplied_path = bool(intent.explicit_path)
+                    exact_filename = bool(os.path.splitext(intent.query)[1]) and not supplied_path
+                    with self._recent_file_searches_lock:
+                        previous = self._recent_file_searches.get(record_session_id)
+                        if previous and time.time() - previous["at"] > 900:
+                            previous = None
+                            self._recent_file_searches.pop(record_session_id, None)
+                        if supplied_path:
+                            # A full path is a new, self-contained instruction.
+                            # Never combine it with a previous person's search.
+                            previous = None
+                            self._recent_file_searches.pop(record_session_id, None)
+                        elif not exact_filename:
+                            self._recent_file_searches[record_session_id] = {
+                                "query": intent.query,
+                                "identity_photo": ("身份证" in wx_msg.content or bool(
+                                    previous and previous.get("query") == intent.query and previous.get("identity_photo")
+                                )),
+                                "extensions": list(intent.extensions),
+                                "at": time.time(),
+                            }
                     if not intent.query and not intent.extensions:
                         reply_text = "请告诉我要找的文件名、关键词或类型，例如：找文件：技术部周报，最近7天，Word。"
                     else:
                         file_index = get_local_file_index()
                         search_started = time.perf_counter()
+                        if exact_filename and previous and previous.get("query"):
+                            intent.limit = 20
                         hits = file_index.search(intent)
+                        identity_followup = bool(exact_filename and previous and previous.get("identity_photo"))
+                        sensitive_identity = "身份证" in wx_msg.content or identity_followup
+                        if exact_filename and previous and previous.get("query"):
+                            owner = str(previous["query"]).casefold()
+                            narrowed = [item for item in hits if owner in str(item.get("path") or "").casefold()]
+                            if narrowed:
+                                hits = narrowed
                         refreshed_for_retry = False
-                        if not hits and self._should_refresh_file_index_before_miss(wx_msg.content):
+                        if not hits and not supplied_path and self._should_refresh_file_index_before_miss(wx_msg.content):
                             try:
                                 file_index.refresh()
                                 hits = file_index.search(intent)
@@ -998,6 +1141,8 @@ class WeixinChannel(ChatChannel):
                                 time.perf_counter() - search_started,
                             )
                         standalone_exact_name = (
+                            not supplied_path
+                            and
                             len(hits) == 1
                             and intent.query
                             and os.path.basename(intent.query).casefold()
@@ -1011,30 +1156,45 @@ class WeixinChannel(ChatChannel):
                             __import__("re").search(r"(?:发|传|发送)给我|帮我发送", wx_msg.content)
                             or standalone_exact_name
                         )
-                        if wants_send and hits:
-                            selected = hits[0]
-                            notice = f"已找到最新匹配文件：{selected['name']}，正在发送。"
-                            self._send_text(notice, from_user, context_token)
-                            suffix = os.path.splitext(selected["path"])[1].lower()
-                            if suffix in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}:
-                                self._send_image(selected["path"], from_user, context_token)
-                            else:
-                                self._send_file(selected["path"], from_user, context_token)
-                            self._record_weixin_tool_audit(
-                                "weixin:file_send",
-                                wx_msg.content,
-                                True,
-                                f"已发送文件：{selected['name']}",
-                                "file",
-                                0,
+                        # A broad match may include another person's identity
+                        # photo.  Never send the newest arbitrary candidate.
+                        if wants_send and len(hits) == 1 and not sensitive_identity:
+                            self._send_local_file_match(
+                                hits[0], from_user, context_token,
+                                record_session_id, wx_msg.content,
                             )
-                            self._persist_direct_exchange(record_session_id, wx_msg.content, notice)
-                            logger.info(f"[Weixin] Fast file sent path={selected['path']}")
                             return
-                        reply_text = format_file_search_reply(intent, hits)
+                        if supplied_path and not hits:
+                            if not file_index.is_authorized_path(intent.explicit_path):
+                                reply_text = f"指定路径不在已授权目录中：{intent.explicit_path}。请在设置中授权该目录后再试。"
+                            else:
+                                nearby = file_index.suggest_nearby(intent)
+                                reply_text = f"目录可访问，但没有名为“{intent.query}”的文件。你提供的路径：{intent.explicit_path}。"
+                                if nearby:
+                                    reply_text += "\n同一目录中名称相近的文件：\n" + "\n".join(
+                                        f"{number}. {item['name']}" for number, item in enumerate(nearby, 1)
+                                    )
+                                    self._remember_file_choices(record_session_id, nearby)
+                                    reply_text += "\n请核对文件名并回复“发送第几个”；我会继续这次任务。"
+                                else:
+                                    reply_text += "\n请补充准确文件名或目录，我会继续这次任务。"
+                        else:
+                            reply_text = format_file_search_reply(
+                                intent, hits, requested_send=wants_send,
+                                sensitive_identity=sensitive_identity,
+                            )
+                            if hits:
+                                self._remember_file_choices(record_session_id, hits)
+                        if not hits and re.search(r"D[：:]?\s*盘|D:\\", wx_msg.content, re.I):
+                            d_roots = [str(root) for root in file_index.roots()
+                                       if os.path.splitdrive(str(root))[0].casefold() == "d:"]
+                            if d_roots and not any(os.path.normcase(root) == os.path.normcase("D:\\") for root in d_roots):
+                                reply_text += "\n当前 D 盘仅授权搜索：" + "、".join(d_roots[:3]) + "；未搜索整个 D 盘。"
                     if self.api and context_token:
-                        self._send_text(reply_text, from_user, context_token)
-                        self._persist_direct_exchange(record_session_id, wx_msg.content, reply_text)
+                        if self._send_text(reply_text, from_user, context_token):
+                            self._persist_direct_exchange(record_session_id, wx_msg.content, reply_text)
+                        else:
+                            self._record_weixin_send_failure(None, "文件搜索结果发送失败")
                         logger.info(f"[Weixin] Fast file search query={intent.query!r}")
                         return
             except Exception as e:
@@ -1045,9 +1205,12 @@ class WeixinChannel(ChatChannel):
                 from channel.weixin.mission_control_bridge import maybe_handle_weixin_mission_command
                 mission_reply = maybe_handle_weixin_mission_command(wx_msg.content)
                 if mission_reply:
+                    trace_emit(None, "选择快捷路径", "selected", route="mission_control")
                     if self.api and context_token:
-                        self._send_text(mission_reply, from_user, context_token)
-                        self._persist_direct_exchange(record_session_id, wx_msg.content, mission_reply)
+                        if self._send_text(mission_reply, from_user, context_token):
+                            self._persist_direct_exchange(record_session_id, wx_msg.content, mission_reply)
+                        else:
+                            self._record_weixin_send_failure(None, "控制指令结果发送失败")
                         logger.info("[Weixin] Mission Control command handled directly")
                         return
             except Exception as e:
@@ -1057,9 +1220,12 @@ class WeixinChannel(ChatChannel):
                 from channel.weixin.task_first_bridge import maybe_handle_weixin_task_first
                 task_reply = maybe_handle_weixin_task_first(wx_msg.content)
                 if task_reply:
+                    trace_emit(None, "选择快捷路径", "selected", route="task_first")
                     if self.api and context_token:
-                        self._send_text(task_reply, from_user, context_token)
-                        self._persist_direct_exchange(record_session_id, wx_msg.content, task_reply)
+                        if self._send_text(task_reply, from_user, context_token):
+                            self._persist_direct_exchange(record_session_id, wx_msg.content, task_reply)
+                        else:
+                            self._record_weixin_send_failure(None, "快捷任务结果发送失败")
                         logger.info("[Weixin] Common task handled before model fallback")
                         return
             except Exception as e:
@@ -1100,14 +1266,18 @@ class WeixinChannel(ChatChannel):
                 except Exception:
                     pass
                 if fast_reply:
+                    trace_emit(None, "选择快捷路径", "selected", route="fast_query")
                     fast_reply = str(fast_reply).strip()
                     if fast_reply and self.api and context_token:
-                        self._send_text(fast_reply, from_user, context_token)
-                        self._persist_direct_exchange(record_session_id, wx_msg.content, fast_reply)
+                        accepted = self._send_text(fast_reply, from_user, context_token)
+                        if accepted:
+                            self._persist_direct_exchange(record_session_id, wx_msg.content, fast_reply)
+                        else:
+                            self._record_weixin_send_failure(None, "快速查询结果发送失败")
                         try:
                             from channel.chat_channel import _write_direct_fast_debug
                             _write_direct_fast_debug(
-                                "weixin_pre_model_fast_sent",
+                                "weixin_pre_model_fast_sent" if accepted else "weixin_pre_model_fast_send_failed",
                                 content=str(wx_msg.content or "")[:200],
                                 preview=fast_reply[:200],
                                 record_session_id=record_session_id,
@@ -1116,13 +1286,14 @@ class WeixinChannel(ChatChannel):
                             pass
                         try:
                             from channel.weixin.failure_learning import record_weixin_success
-                            record_weixin_success(
-                                command=str(wx_msg.content or ""),
-                                task_type="direct_fast_query",
-                                action="weixin_pre_model_fast_reply",
-                                route="weixin:pre_model_fast_query",
-                                evidence=fast_reply[:120],
-                            )
+                            if accepted:
+                                record_weixin_success(
+                                    command=str(wx_msg.content or ""),
+                                    task_type="direct_fast_query",
+                                    action="weixin_pre_model_fast_reply",
+                                    route="weixin:pre_model_fast_query",
+                                    evidence=fast_reply[:120],
+                                )
                         except Exception:
                             pass
                         logger.info("[Weixin] Fast query handled before model fallback")
@@ -1327,7 +1498,9 @@ class WeixinChannel(ChatChannel):
         # duplicate the bubble.
         text_content = getattr(reply, "text_content", "") or ""
         if text_content and reply.type not in (ReplyType.TEXT, ReplyType.IMAGE_URL, ReplyType.IMAGE):
-            self._send_text(text_content, receiver, context_token)
+            if not self._send_text(text_content, receiver, context_token):
+                self._record_weixin_send_failure(context, "附件说明文字发送失败")
+                return False
             time.sleep(0.3)
 
         if reply.type == ReplyType.TEXT:
@@ -1336,27 +1509,36 @@ class WeixinChannel(ChatChannel):
                 self._record_weixin_send_failure(context, "文本消息发送失败")
             return ok
         elif reply.type in (ReplyType.IMAGE_URL, ReplyType.IMAGE):
-            self._send_image(reply.content, receiver, context_token)
+            ok = self._send_image(reply.content, receiver, context_token)
         elif reply.type == ReplyType.FILE:
-            self._send_file(reply.content, receiver, context_token)
+            ok = self._send_file(reply.content, receiver, context_token)
         elif reply.type in (ReplyType.VIDEO, ReplyType.VIDEO_URL):
-            self._send_video(reply.content, receiver, context_token)
+            ok = self._send_video(reply.content, receiver, context_token)
         elif reply.type == ReplyType.VOICE:
             # ilink has no outbound voice item; deliver TTS as a file attachment.
-            self._send_file(reply.content, receiver, context_token)
+            ok = self._send_file(reply.content, receiver, context_token)
         else:
             logger.warning(f"[Weixin] Unsupported reply type: {reply.type}, fallback to text")
             ok = self._send_text(str(reply.content), receiver, context_token)
             if not ok:
                 self._record_weixin_send_failure(context, "降级文本消息发送失败")
             return ok
+        if not ok:
+            self._record_weixin_send_failure(context, "媒体消息发送失败")
+        return ok
 
-    @staticmethod
-    def _record_weixin_send_failure(context: Context, message: str):
+    def _record_weixin_send_failure(self, context: Context, message: str):
+        from common.task_trace import get_send_status
+        if get_send_status() == "unconfirmed":
+            # An empty response or timeout may still have delivered the item.
+            # Preserve the trace as awaiting verification; do not teach the
+            # failure learner that the message was definitely rejected.
+            logger.warning("[Weixin] Send outcome unconfirmed; verify before retry: %s", message)
+            return
         try:
             from channel.weixin.failure_learning import record_weixin_failure
             record_weixin_failure(
-                command=str(context.content or ""),
+                command=str(getattr(context, "content", "") or ""),
                 category="send_failure",
                 message=message,
                 route="weixin_send",
@@ -1485,14 +1667,25 @@ class WeixinChannel(ChatChannel):
         because the bot itself can re-login; we just need to forget the
         per-user token so the next push won't retry forever.
         """
+        from common.task_trace import set_send_status
         if not isinstance(resp, dict):
-            return True
+            self._last_send_error = "微信接口未返回有效发送结果"
+            self._last_send_status = "unconfirmed"
+            set_send_status("unconfirmed")
+            return False
         ret = resp.get("ret")
         errcode = resp.get("errcode")
+        if ret is None and errcode is None:
+            self._last_send_error = "微信接口未返回发送状态"
+            self._last_send_status = "unconfirmed"
+            set_send_status("unconfirmed")
+            return False
         message = ""
         if isinstance(resp, dict):
             message = str(resp.get("message") or resp.get("errmsg") or resp.get("error") or "")
-        if ret == -14 or errcode == -14 or ret == -2 or errcode == -2:
+        if ret == -14 or errcode == -14:
+            self._last_send_status = "failed"
+            set_send_status("failed")
             self._last_send_error = "微信会话发送令牌已失效，请先从手机微信给 Agent 发送一条消息刷新授权"
             logger.warning(
                 f"[Weixin] Send token invalid for receiver={receiver}: "
@@ -1500,11 +1693,26 @@ class WeixinChannel(ChatChannel):
             )
             self._invalidate_context_token(receiver)
             return False
+        if ret == -2 or errcode == -2:
+            self._last_send_status = "failed"
+            set_send_status("failed")
+            # `prepare failed` does not prove that the conversation token has
+            # expired. Keep it so transient provider failures can be retried.
+            self._last_send_error = "微信接口准备发送失败" + (f"：{message}" if message else "（ret=-2）")
+            logger.warning(
+                f"[Weixin] Send preparation failed for receiver={receiver}: "
+                f"ret={ret}, errcode={errcode}, message={message}; keeping cached context_token"
+            )
+            return False
         if ret not in (None, 0) or errcode not in (None, 0):
+            self._last_send_status = "failed"
+            set_send_status("failed")
             self._last_send_error = f"微信接口拒绝发送：ret={ret}, errcode={errcode}" + (f"，{message}" if message else "")
             logger.warning(f"[Weixin] Send rejected for receiver={receiver}: ret={ret}, errcode={errcode}, message={message}")
             return False
         self._last_send_error = ""
+        self._last_send_status = "accepted"
+        set_send_status("accepted")
         return True
 
     @_trace_send
@@ -1539,7 +1747,9 @@ class WeixinChannel(ChatChannel):
     # ── Processing notices ─────────────────────────────────────────────
 
     def _processing_notice_enabled(self) -> bool:
-        return bool(conf().get("weixin_processing_notice", True))
+        # Keep task progress in the execution trace.  A chat reply should be
+        # the requested answer unless the user explicitly enables notices.
+        return bool(conf().get("weixin_processing_notice", False))
 
     @staticmethod
     def _context_msg_id(context: Context) -> str:
@@ -1637,11 +1847,14 @@ class WeixinChannel(ChatChannel):
             text = text[cut:].lstrip("\n")
         return chunks
 
+    @_trace_send
     def _send_image(self, img_path_or_url: str, receiver: str, context_token: str):
         local_path = self._resolve_media_path(img_path_or_url)
         if not local_path:
+            self._last_send_error = "图片文件不存在"
             self._send_text("[Image send failed: file not found]", receiver, context_token)
-            return
+            self._last_send_error = "图片文件不存在"
+            return False
         try:
             result = upload_media_to_cdn(self.api, local_path, receiver, media_type=1)
             resp = self.api.send_image_item(
@@ -1651,17 +1864,25 @@ class WeixinChannel(ChatChannel):
                 aes_key_b64=result["aes_key_b64"],
                 ciphertext_size=result["ciphertext_size"],
             )
-            self._check_send_response(resp, receiver)
-            logger.info(f"[Weixin] Image sent to {receiver}")
+            if not self._check_send_response(resp, receiver):
+                return False
+            logger.info(f"[Weixin] Image accepted by API for {receiver}")
+            return True
         except Exception as e:
+            self._last_send_error = f"微信图片发送异常：{e}"
             logger.error(f"[Weixin] Image send failed: {e}")
             self._send_text("[Image send failed]", receiver, context_token)
+            self._last_send_error = f"微信图片发送异常：{e}"
+            return False
 
+    @_trace_send
     def _send_file(self, file_path_or_url: str, receiver: str, context_token: str):
         local_path = self._resolve_media_path(file_path_or_url)
         if not local_path:
+            self._last_send_error = "附件文件不存在"
             self._send_text("[File send failed: file not found]", receiver, context_token)
-            return
+            self._last_send_error = "附件文件不存在"
+            return False
         try:
             result = upload_media_to_cdn(self.api, local_path, receiver, media_type=3)
             resp = self.api.send_file_item(
@@ -1672,17 +1893,25 @@ class WeixinChannel(ChatChannel):
                 file_name=os.path.basename(local_path),
                 file_size=result["raw_size"],
             )
-            self._check_send_response(resp, receiver)
-            logger.info(f"[Weixin] File sent to {receiver}")
+            if not self._check_send_response(resp, receiver):
+                return False
+            logger.info(f"[Weixin] File accepted by API for {receiver}")
+            return True
         except Exception as e:
+            self._last_send_error = f"微信附件发送异常：{e}"
             logger.error(f"[Weixin] File send failed: {e}")
             self._send_text("[File send failed]", receiver, context_token)
+            self._last_send_error = f"微信附件发送异常：{e}"
+            return False
 
+    @_trace_send
     def _send_video(self, video_path_or_url: str, receiver: str, context_token: str):
         local_path = self._resolve_media_path(video_path_or_url)
         if not local_path:
+            self._last_send_error = "视频文件不存在"
             self._send_text("[Video send failed: file not found]", receiver, context_token)
-            return
+            self._last_send_error = "视频文件不存在"
+            return False
         try:
             result = upload_media_to_cdn(self.api, local_path, receiver, media_type=2)
             resp = self.api.send_video_item(
@@ -1692,11 +1921,16 @@ class WeixinChannel(ChatChannel):
                 aes_key_b64=result["aes_key_b64"],
                 ciphertext_size=result["ciphertext_size"],
             )
-            self._check_send_response(resp, receiver)
-            logger.info(f"[Weixin] Video sent to {receiver}")
+            if not self._check_send_response(resp, receiver):
+                return False
+            logger.info(f"[Weixin] Video accepted by API for {receiver}")
+            return True
         except Exception as e:
+            self._last_send_error = f"微信视频发送异常：{e}"
             logger.error(f"[Weixin] Video send failed: {e}")
             self._send_text("[Video send failed]", receiver, context_token)
+            self._last_send_error = f"微信视频发送异常：{e}"
+            return False
 
     @staticmethod
     def _resolve_media_path(path_or_url: str) -> str:

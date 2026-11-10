@@ -935,6 +935,28 @@ body.sidebar-resizing { cursor:col-resize; user-select:none; }
     flex-direction: column;
     height: 100%;
 }
+.chat-main.space-new-chat { justify-content:center; }
+.space-new-chat #chat-messages { flex:0 0 auto; overflow:visible; }
+.space-new-chat #welcome-screen { height:auto !important; padding:0 20px 12px !important; overflow:visible; }
+.space-new-chat #welcome-screen h1 { color:#111827; font-size:30px !important; font-weight:700; margin:0 0 12px !important; }
+.dark .space-new-chat #welcome-screen h1 { color:#f5f5f5; }
+.space-new-chat-modes,.space-new-chat-prompts { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; }
+.space-new-chat-modes { padding:4px; border-radius:30px; background:#f3f4f6; margin-bottom:54px; }
+.dark .space-new-chat-modes { background:#262626; }
+.space-new-chat-modes button,.space-new-chat-prompts button { border-radius:24px; padding:6px 13px; font-size:13px; color:#4b5563; }
+.space-new-chat-modes button.active { background:#fff; color:#111827; box-shadow:0 1px 4px #0001; }
+.space-new-chat-prompts { margin-bottom:4px; }
+.space-new-chat-prompts button { border:1px solid #e5e7eb; background:#fff; }
+.space-new-chat-prompts button:hover { border-color:#9ca3af; }
+.dark .space-new-chat-modes button,.dark .space-new-chat-prompts button { color:#e5e7eb; }
+.dark .space-new-chat-modes button.active,.dark .space-new-chat-prompts button { background:#2a2a2a; }
+.space-new-chat #chat-composer-surface { flex:0 0 auto; border:0 !important; background:transparent !important; padding:0 24px; }
+.space-new-chat #composer-card { min-height:145px; }
+.space-new-chat-location { display:flex; align-items:center; gap:7px; width:100%; padding:10px 14px; color:#6b7280; font-size:12px; text-align:left; background:#f5f5f5; border-radius:0 0 18px 18px; }
+.space-new-chat-location .fa-chevron-down { font-size:9px; }
+.dark .space-new-chat-location { background:#242424; }
+.chat-main:not(.space-new-chat) .space-new-chat-location { display:none; }
+@media(max-width:640px){.space-new-chat-modes{margin-bottom:28px}.space-new-chat #welcome-screen h1{font-size:24px !important}.space-new-chat #chat-composer-surface{padding:0 12px}}
 
 /* Reading-width conversation, with replies presented as content rather than cards. */
 #chat-messages > .user-message-group,
@@ -1288,6 +1310,7 @@ html:not(.dark) #chat-composer-surface { background:#fff !important; }
 .agent-content-step .agent-content-body p:last-child { margin-bottom: 0; }
 
 /* Tool step - collapsible */
+.agent-tool-step { font-size:13px; }
 .agent-tool-step .tool-header {
     display: flex;
     align-items: center;
@@ -1299,10 +1322,24 @@ html:not(.dark) #chat-composer-surface { background:#fff !important; }
 }
 .agent-tool-step .tool-header:hover { color: #64748b; }
 .dark .agent-tool-step .tool-header:hover { color: #cbd5e1; }
+.agent-tool-step .tool-name { flex:0 1 auto; min-width:0; max-width:35%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.agent-tool-step .tool-status { flex-shrink:0; color:#16834b; font-size:12px; font-weight:600; }
+.agent-tool-step.tool-streaming .tool-status { color:#2563eb; }
+.agent-tool-step.tool-failed .tool-status { color:#dc2626; }
+.agent-tool-step .tool-summary { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#7b8794; font-size:12px; }
+.agent-tool-step.tool-failed .tool-summary { color:#dc2626; }
+.agent-tool-step .tool-live-duration,.agent-tool-step .tool-time { flex-shrink:0; font-size:10px; color:#94a3b8; }
+.tool-progress-line { display:flex; justify-content:space-between; gap:12px; color:#64748b; font-size:12px; margin-bottom:5px; }
+.tool-progress-track { height:3px; overflow:hidden; border-radius:4px; background:#e2e8f0; margin-bottom:9px; }
+.tool-progress-bar { width:28%; height:100%; border-radius:4px; background:#55a5e8; animation:tool-progress-sweep 1.4s ease-in-out infinite alternate; }
+.tool-progress-bar.determinate { animation:none; }
+@keyframes tool-progress-sweep { from { transform:translateX(-100%); } to { transform:translateX(350%); } }
+.tool-recovery-advice { margin-top:7px; padding:7px 9px; border-left:2px solid #ef4444; background:#fef2f2; color:#991b1b; font-size:12px; line-height:1.5; }
+.dark .tool-recovery-advice { background:rgba(239,68,68,.1); color:#fca5a5; }
 .agent-tool-step .tool-icon { font-size: 0.625rem; }
 .agent-tool-step .tool-chevron {
     font-size: 0.5rem;
-    margin-left: auto;
+    margin-left: 0;
     transition: transform 0.2s ease;
     opacity: 0.5;
 }
@@ -1331,7 +1368,7 @@ html:not(.dark) #chat-composer-surface { background:#fff !important; }
 .tool-detail-section { margin-bottom: 0.375rem; }
 .tool-detail-section:last-child { margin-bottom: 0; }
 .tool-detail-label {
-    font-size: 0.625rem;
+    font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -1340,7 +1377,7 @@ html:not(.dark) #chat-composer-surface { background:#fff !important; }
 }
 .tool-detail-content {
     font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-    font-size: 0.7rem;
+    font-size: 0.8125rem;
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-all;
@@ -1742,20 +1779,53 @@ html:not(.dark) #chat-composer-surface { background:#fff !important; }
     position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 128px;
     gap: 6px;
     padding: 10px 10px 8px;
     border-radius: 18px;
     border: 1px solid #e2e8f0;
-    background: #f8fafc;
+    background: #fff;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 .composer-more-menu { position:absolute; z-index:60; left:10px; bottom:49px; width:230px; max-height:min(55vh,440px); overflow-y:auto; display:flex; flex-direction:column; gap:2px; padding:7px; border:1px solid #e2e8f0; border-radius:13px; background:#fff; box-shadow:0 12px 35px rgba(15,23,42,.18); }
 .composer-more-menu.hidden { display:none; }
+.composer-more-menu { width:270px; bottom:47px; }
+.composer-more-menu #composer-add-picker { max-height:310px; overflow-y:auto; }
+.composer-more-menu .composer-picker-search { width:100%; margin:5px 0 7px; padding:8px 9px; border:1px solid #e2e8f0; border-radius:8px; outline:none; background:transparent; font-size:12px; }
+.composer-more-menu .composer-picker-empty { padding:10px; color:#94a3b8; font-size:12px; line-height:1.5; }
+.composer-add-btn { width:34px; height:34px; border-radius:50%; background:#f1f5f9; color:#334155; font-size:15px; }
+.composer-add-btn:hover { background:#e2e8f0; color:#111827; }
+.dark .composer-add-btn { background:#363636; color:#f1f5f9; }
+#composer-more-toggle.composer-add-btn { width:34px; height:34px; border-radius:50%; background:#f1f3f5; color:#334155; }
+#composer-more-toggle.composer-add-btn:hover { background:#e2e8f0; }
+.dark #composer-more-toggle.composer-add-btn { background:#363636; color:#f1f5f9; }
+.composer-context-chips { display:flex; flex-wrap:wrap; gap:6px; padding:0 4px 4px; }
+.composer-context-chips.hidden { display:none; }
+.composer-context-token { display:inline-flex; align-items:center; gap:6px; max-width:220px; padding:4px 7px 4px 9px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; color:#475569; font-size:11px; }
+.composer-context-token span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.composer-context-token button { color:#94a3b8; line-height:1; }
+.composer-context-token button:hover { color:#dc2626; }
+.dark .composer-context-token { background:#333; border-color:#4b4b4b; color:#e5e7eb; }
+.composer-model-btn { display:inline-flex; align-items:center; gap:6px; max-width:150px; height:30px; padding:0 7px; border-radius:8px; color:#475569; font-size:12px; white-space:nowrap; }
+.composer-model-btn span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.composer-model-btn:hover,.composer-model-btn.open { background:#f1f5f9; color:#111827; }
+.dark .composer-model-btn { color:#e5e7eb; }
+.dark .composer-model-btn:hover,.dark .composer-model-btn.open { background:#393939; }
+.composer-footer { display:flex; align-items:center; gap:13px; min-height:28px; padding:5px 12px 0; }
+.composer-footer-btn { display:inline-flex; align-items:center; gap:6px; max-width:190px; color:#7c8794; font-size:11px; white-space:nowrap; }
+.composer-footer-btn span { overflow:hidden; text-overflow:ellipsis; }
+.composer-footer-btn:hover,.composer-footer-btn.open { color:#334155; }
+.composer-permission-btn #permission-selector-icon { color:#e04857; }
+.dark .composer-footer-btn { color:#a1a1aa; }
+.dark .composer-footer-btn:hover,.dark .composer-footer-btn.open { color:#fff; }
 .dark .composer-more-menu { background:#282828; border-color:#464646; }
 .composer-more-item { display:flex; align-items:center; gap:10px; min-height:36px; width:100%; padding:7px 9px; border-radius:8px; color:#334155; font-size:12px; text-align:left; }
 .composer-more-item > i { width:17px; text-align:center; color:#64748b; }
 .composer-more-item > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .composer-more-item:hover { background:#f1f5f9; color:#166534; }
+.composer-more-item:disabled { opacity:.48; cursor:not-allowed; }
+.composer-more-item:disabled:hover { background:transparent; color:#334155; }
+.composer-more-item small { margin-left:auto; flex-shrink:0; color:#94a3b8; font-size:10px; }
 .dark .composer-more-item { color:#e5e7eb; }
 
 /* Conversation controls and scheduled-task workspace */
@@ -1818,8 +1888,8 @@ html:not(.dark) #chat-composer-surface { background:#fff !important; }
 .dark .composer-more-item:hover { background:#383838; color:#86efac; }
 .composer-card:focus-within {
     background: #fff;
-    border-color: #4ABE6E;
-    box-shadow: 0 0 0 3px rgba(74, 190, 110, 0.12);
+    border-color: #cbd5e1;
+    box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.1);
 }
 .dark .composer-card {
     border-color: rgba(255, 255, 255, 0.12);
@@ -3559,22 +3629,22 @@ html.dark .text-slate-400 { color:#8f9aaa !important; }
 .dark .status-error-bg, .dark [data-status="error"].status-badge, .dark [data-status="failed"].status-badge { background:rgba(220,38,38,.18) !important; color:#f87171 !important; border-color:rgba(248,113,113,.35) !important; }
 .dark .status-disabled-bg, .dark [data-status="disabled"].status-badge { background:rgba(148,163,184,.12) !important; color:#94a3b8 !important; border-color:rgba(148,163,184,.25) !important; }
 
-/* Match the reference app's reading scale without changing layout or colors. */
+/* Keep navigation labels and conversation text on a consistent reading scale. */
 #sidebar nav .sidebar-item > span,
 #sidebar nav .menu-group > button > span,
 #sidebar .sidebar-quick-entry,
-#sidebar .sidebar-latest-entry .quick-title { font-size:15px; }
-#sidebar .owner-role { font-size:13px; }
-#app-breadcrumb { font-size:15px; }
-#chat-messages .agent-message-name { font-size:14px; }
+#sidebar .sidebar-latest-entry .quick-title { font-size:12px; }
+#sidebar .owner-role { font-size:12px; }
+#app-breadcrumb { font-size:14px; }
+#chat-messages .agent-message-name { font-size:13px; }
 #chat-messages .bot-message-group .msg-content,
-#chat-messages .user-bubble { font-size:15px; }
+#chat-messages .user-bubble { font-size:14px; }
 #chat-messages .agent-completion-meta,
 #chat-messages .response-time-row,
-#chat-messages .user-message-group .text-xs { font-size:13px; }
-#chat-composer-surface .composer-textarea { font-size:15px; }
+#chat-messages .user-message-group .text-xs { font-size:12px; }
+#chat-composer-surface .composer-textarea { font-size:14px; }
 #chat-composer-surface .composer-compact-select { font-size:12px; }
-#chat-composer-surface .composer-more-item { font-size:13px; }
+#chat-composer-surface .composer-more-item { font-size:12px; }
 
 /* Settings navigation follows the reference's quiet, grouped layout. */
 #settings-dialog .settings-nav.is-active { background:#e5e7eb !important; color:#111827 !important; }
@@ -3663,15 +3733,16 @@ html.dark .text-slate-400 { color:#8f9aaa !important; }
 #view-tasks .scheduler-task-row .automation-row-actions > button i { font-size:11px !important; }
 #view-tasks .scheduler-toggle-track { position:relative; display:block; width:34px; height:18px; border-radius:999px; background:#d6d0c8; transition:background .18s; }
 #view-tasks .scheduler-toggle-track::after { content:''; position:absolute; top:3px; left:3px; width:12px; height:12px; border-radius:50%; background:#fff; transition:transform .18s; }
-#view-tasks .scheduler-row-toggle input:checked + .scheduler-toggle-track { background:#bf4937; }
-#view-tasks .scheduler-row-toggle input:checked + .scheduler-toggle-track::after { transform:translateX(16px); }
-#view-tasks .scheduler-row-toggle input:focus-visible + .scheduler-toggle-track { outline:2px solid #c74736; outline-offset:2px; }
+#view-tasks .scheduler-row-toggle[aria-checked="true"] .scheduler-toggle-track { background:#bf4937; }
+#view-tasks .scheduler-row-toggle[aria-checked="true"] .scheduler-toggle-track::after { transform:translateX(16px); }
+#view-tasks .scheduler-row-toggle:focus-visible .scheduler-toggle-track { outline:2px solid #c74736; outline-offset:2px; }
 #view-tasks .scheduler-row-menu-wrap { position:relative; }
 #view-tasks .scheduler-row-menu { position:absolute; z-index:20; top:28px; right:0; width:152px; padding:5px; border:1px solid #e7dfd3; border-radius:10px; background:#fff; box-shadow:0 10px 25px rgba(60,40,20,.13); }
 #view-tasks .scheduler-row-menu.hidden { display:none; }
 #view-tasks .scheduler-row-menu button { display:block; width:100%; height:auto; padding:7px 9px !important; border-radius:6px; color:#4c443d !important; font-size:12px !important; text-align:left; }
 #view-tasks .scheduler-row-menu button:hover { background:#f6f2ed !important; }
 #view-tasks .scheduler-row-menu button.danger { color:#c74736 !important; }
+#view-tasks .scheduler-row-menu button i { display:inline-block; width:19px; margin-right:5px; font-size:12px; }
 .dark #view-tasks #scheduler-table-header[data-mode=tasks],.dark #view-tasks #tasks-list[data-mode=tasks],.dark #view-tasks .scheduler-row-menu { background:#202020; border-color:#3b3b3b; }
 .dark #view-tasks .scheduler-task-row { border-bottom-color:#343434 !important; }
 .dark #view-tasks .scheduler-task-row:hover { background:#2a2826 !important; }
@@ -3698,3 +3769,332 @@ html.dark .text-slate-400 { color:#8f9aaa !important; }
   #view-tasks .scheduler-top-actions { margin-left:0; }
   #view-tasks .scheduler-task-row .automation-row-name b { white-space:normal; }
 }
+
+/* Scheduled task creator */
+#scheduler-creator-modal .scheduler-creator-dialog { max-width:800px; padding:24px; border-radius:24px; color:#171717; }
+#scheduler-creator-modal .scheduler-creator-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+#scheduler-creator-modal .scheduler-creator-heading h2 { margin:0; font-size:16px; font-weight:700; }
+#scheduler-creator-modal .scheduler-creator-heading button { width:24px; height:24px; color:#858585; }
+#scheduler-creator-modal .scheduler-creator-name { width:100%; height:40px; padding:0 15px; border:1px solid #e2e2e2; border-radius:9px; outline:none; background:transparent; font-size:14px; }
+#scheduler-creator-modal .scheduler-creator-prompt { display:flex; flex-direction:column; min-height:148px; margin-top:16px; padding:15px 18px 12px; border:3px solid #e8e8e8; border-radius:23px; box-shadow:0 13px 25px rgba(0,0,0,.07); }
+#scheduler-creator-modal .scheduler-creator-prompt textarea { flex:1; min-height:84px; width:100%; resize:vertical; border:0; outline:none; background:transparent; font-size:14px; }
+#scheduler-creator-modal .scheduler-creator-prompt-tools { display:flex; align-items:center; justify-content:space-between; }
+#scheduler-creator-modal .scheduler-creator-prompt-tools button { width:26px; height:26px; font-size:17px; color:#555; }
+#scheduler-creator-modal .scheduler-creator-prompt-tools select { max-width:145px; border:0; background:transparent; font-size:13px; }
+#scheduler-creator-modal .scheduler-creator-context { display:flex; gap:22px; min-height:38px; padding:11px 20px; border-radius:0 0 20px 20px; background:#f6f6f6; color:#858585; font-size:12px; }
+#scheduler-creator-modal .scheduler-creator-context span { display:flex; align-items:center; gap:6px; }
+#scheduler-creator-modal .scheduler-creator-schedule { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:16px; }
+#scheduler-creator-modal .scheduler-creator-schedule label,#scheduler-creator-modal .scheduler-creator-extra label,#scheduler-creator-modal .scheduler-creator-advanced > label,#scheduler-creator-modal #scheduler-create-manual-wrap label,#scheduler-creator-modal #scheduler-create-cron-wrap label { display:block; font-size:13px; }
+#scheduler-creator-modal .scheduler-creator-schedule select,#scheduler-creator-modal .scheduler-creator-schedule input,#scheduler-creator-modal .scheduler-creator-extra select,#scheduler-creator-modal .scheduler-creator-extra input,#scheduler-creator-modal .scheduler-creator-advanced select,#scheduler-creator-modal .scheduler-creator-advanced input:not([type=checkbox]) { width:100%; min-height:40px; margin-top:5px; padding:0 12px; border:1px solid #e3e3e3; border-radius:9px; outline:none; background:transparent; color:inherit; font-size:13px; }
+#scheduler-creator-modal .scheduler-creator-extra { margin-top:12px; }
+#scheduler-creator-modal .scheduler-creator-extra.hidden,#scheduler-creator-modal .scheduler-creator-advanced.hidden,#scheduler-creator-modal #scheduler-create-cron-wrap.hidden,#scheduler-creator-modal #scheduler-create-manual-wrap.hidden { display:none; }
+#scheduler-creator-modal .scheduler-creator-interval { display:flex; gap:8px; }
+#scheduler-creator-modal .scheduler-creator-advanced { display:grid; gap:12px; margin-top:14px; padding:14px; border:1px solid #e6e6e6; border-radius:12px; }
+#scheduler-creator-modal .scheduler-creator-check { display:flex !important; align-items:center; gap:7px; }
+#scheduler-creator-modal .scheduler-creator-wecom { display:flex; align-items:center; gap:9px; margin-top:20px; color:#888; font-size:13px; cursor:pointer; }
+#scheduler-creator-modal .scheduler-creator-wecom input { position:absolute; opacity:0; width:1px; height:1px; }
+#scheduler-creator-modal .scheduler-creator-switch { position:relative; width:27px; height:16px; border-radius:999px; background:#d9d9d9; }
+#scheduler-creator-modal .scheduler-creator-switch::after { content:''; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:white; transition:transform .15s; }
+#scheduler-creator-modal .scheduler-creator-wecom input:checked + .scheduler-creator-switch { background:#32bb8b; }
+#scheduler-creator-modal .scheduler-creator-wecom input:checked + .scheduler-creator-switch::after { transform:translateX(11px); }
+#scheduler-creator-modal .scheduler-creator-status { min-height:18px; margin-top:9px; color:#777; font-size:12px; }
+#scheduler-creator-modal .scheduler-creator-status.error { color:#cf3d3d; }
+#scheduler-creator-modal .scheduler-creator-status.success { color:#149b70; }
+#scheduler-creator-modal .scheduler-creator-footer { display:flex; justify-content:flex-end; gap:12px; margin-top:6px; }
+#scheduler-creator-modal .scheduler-creator-footer button { min-width:68px; height:33px; border:1px solid #dedede; border-radius:9px; background:transparent; font-size:13px; }
+#scheduler-creator-modal .scheduler-creator-footer button:last-child { border:0; background:#171717; color:white; }
+#scheduler-creator-modal .scheduler-creator-footer button:last-child:disabled { background:#d0d0d0; color:white; cursor:not-allowed; }
+.dark #scheduler-creator-modal .scheduler-creator-dialog { color:#eee; }
+.dark #scheduler-creator-modal .scheduler-creator-context { background:#242424; }
+.dark #scheduler-creator-modal .scheduler-creator-name,.dark #scheduler-creator-modal .scheduler-creator-prompt,.dark #scheduler-creator-modal .scheduler-creator-schedule select,.dark #scheduler-creator-modal .scheduler-creator-schedule input,.dark #scheduler-creator-modal .scheduler-creator-extra input,.dark #scheduler-creator-modal .scheduler-creator-extra select,.dark #scheduler-creator-modal .scheduler-creator-advanced { border-color:#454545; }
+.dark #scheduler-creator-modal .scheduler-creator-footer button:last-child { background:#eee; color:#171717; }
+.dark #scheduler-creator-modal .scheduler-creator-footer button:last-child:disabled { background:#555; color:#aaa; }
+@media(max-width:620px){ #scheduler-creator-modal .scheduler-creator-dialog { padding:18px; } #scheduler-creator-modal .scheduler-creator-schedule { grid-template-columns:1fr; gap:8px; } }
+
+/* Scheduled tasks overview: compact card layout */
+#view-tasks .automation-page-surface { background:#fff; }
+#view-tasks .automation-page-surface > div { max-width:none; }
+#view-tasks .scheduler-page-top { align-items:center; margin:0 0 17px; }
+#view-tasks .scheduler-main-tabs { gap:24px; }
+#view-tasks .scheduler-main-tabs button { font-size:18px; color:#969696; }
+#view-tasks .scheduler-main-tabs button.active { color:#161616; font-weight:700; }
+#view-tasks .scheduler-top-actions { gap:13px; }
+#view-tasks .scheduler-top-actions .scheduler-icon-button { width:29px; height:29px; color:#272727; }
+#view-tasks .scheduler-secondary-button { border:1px solid #e3e3e3; border-radius:9px; background:#fff; color:#222; }
+#view-tasks .scheduler-primary-button { border-radius:9px; background:#171717; color:#fff; }
+#view-tasks .scheduler-primary-button:hover { background:#333; }
+#view-tasks .scheduler-new-chevron { margin-left:12px; font-size:10px; }
+#view-tasks .scheduler-search-row { max-width:1120px; margin:0 0 12px; }
+#view-tasks .scheduler-search-row.hidden { display:none; }
+#view-tasks .scheduler-search-row .scheduler-search { border:1px solid #e8e8e8; background:#fafafa; }
+#view-tasks .scheduler-advanced-filters { max-width:1120px; margin:0 0 12px; border-color:#ececec; background:#fff; }
+#view-tasks .scheduler-task-controls { margin:0 0 18px; }
+#view-tasks .scheduler-status-tabs { gap:4px; }
+#view-tasks .scheduler-status-tabs button { padding:8px 13px; border-radius:9px; color:#8b8b8b; font-size:13px; }
+#view-tasks .scheduler-status-tabs button.active { background:#f3f3f3; color:#191919; }
+#view-tasks .scheduler-status-tabs button.active::after { content:none; }
+#view-tasks .scheduler-status-tabs button span { color:inherit; }
+#view-tasks #scheduler-table-header[data-mode=tasks] { display:none !important; }
+#view-tasks #tasks-list[data-mode=tasks] { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; max-width:1120px; border:0; border-radius:0; background:transparent; }
+#view-tasks #tasks-list[data-mode=tasks].hidden { display:none; }
+#view-tasks .scheduler-task-row { display:grid !important; grid-template-columns:minmax(0,1fr) auto !important; grid-template-rows:minmax(74px,auto) 33px; gap:0 10px; min-height:155px; padding:19px 20px 15px !important; border:1px solid #e6e6e6 !important; border-radius:17px !important; background:#fff !important; box-shadow:0 3px 10px rgba(0,0,0,.025); }
+#view-tasks .scheduler-task-row:hover { background:#fff !important; border-color:#d6d6d6 !important; box-shadow:0 6px 16px rgba(0,0,0,.055); }
+#view-tasks .scheduler-task-row .automation-row-name { grid-column:1; grid-row:1; padding:0 5px 0 0; min-width:0; }
+#view-tasks .scheduler-task-row .automation-row-name > div:first-child { display:flex; gap:8px; align-items:center; min-height:22px; }
+#view-tasks .scheduler-task-row .automation-row-name b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:700; color:#111; }
+#view-tasks .scheduler-task-row .automation-row-name p { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin:5px 0 0; max-width:none; white-space:normal; font-size:13px; line-height:1.55; color:#929292; }
+#view-tasks .scheduler-task-row .automation-row-name .automation-row-warn { color:#e24a4a; }
+#view-tasks .scheduler-task-row .automation-row-plan { grid-column:1; grid-row:2; align-self:end; width:100%; padding-top:12px; border-top:1px solid #ededed; color:#999; font-size:12px; }
+#view-tasks .scheduler-task-row .automation-row-plan::before { content:'◴  '; }
+#view-tasks .scheduler-task-row .automation-row-next { grid-column:2; grid-row:2; align-self:end; justify-self:end; width:100%; padding-top:12px; border-top:1px solid #ededed; text-align:right; color:#999; font-size:12px; }
+#view-tasks .scheduler-task-row .automation-row-last { display:none; }
+#view-tasks .scheduler-task-row .automation-row-control { grid-column:2; grid-row:1; position:static; justify-self:end; align-self:start; }
+#view-tasks .scheduler-task-row .automation-row-actions { width:auto; gap:5px !important; }
+#view-tasks .scheduler-task-row .task-run-now,#view-tasks .scheduler-task-row .task-edit,#view-tasks .scheduler-task-row .task-menu-toggle { visibility:hidden; }
+#view-tasks .scheduler-task-row:hover .task-run-now,#view-tasks .scheduler-task-row:hover .task-edit,#view-tasks .scheduler-task-row:hover .task-menu-toggle,#view-tasks .scheduler-task-row:focus-within .task-run-now,#view-tasks .scheduler-task-row:focus-within .task-edit,#view-tasks .scheduler-task-row:focus-within .task-menu-toggle { visibility:visible; }
+#view-tasks .scheduler-task-row .scheduler-toggle-track { background:#d6d6d6; }
+#view-tasks .scheduler-task-row .scheduler-row-toggle[aria-checked="true"] .scheduler-toggle-track { background:#08bd92; }
+#view-tasks .scheduler-task-row .automation-row-actions > .scheduler-row-toggle { display:inline-flex; align-items:center; justify-content:center; width:38px; height:28px; margin-left:4px; cursor:pointer; }
+#view-tasks .scheduler-task-row .scheduler-row-toggle.is-saving { opacity:.5; cursor:wait; }
+#view-tasks .scheduler-task-row.opacity-50 { opacity:.65; }
+.dark #view-tasks .automation-page-surface { background:#111; }
+.dark #view-tasks .scheduler-main-tabs button.active { color:#fff; }
+.dark #view-tasks .scheduler-top-actions .scheduler-icon-button { color:#ddd; }
+.dark #view-tasks .scheduler-secondary-button,.dark #view-tasks .scheduler-task-row,.dark #view-tasks .scheduler-advanced-filters { background:#202020 !important; border-color:#3d3d3d !important; color:#eee; }
+.dark #view-tasks .scheduler-task-row:hover { background:#242424 !important; }
+.dark #view-tasks .scheduler-task-row .automation-row-name b { color:#eee; }
+.dark #view-tasks .scheduler-task-row .automation-row-plan,.dark #view-tasks .scheduler-task-row .automation-row-next { border-color:#393939; color:#aaa; }
+@media(max-width:960px){ #view-tasks #tasks-list[data-mode=tasks] { grid-template-columns:1fr; } }
+@media(max-width:620px){ #view-tasks .scheduler-page-top { flex-wrap:wrap; gap:12px; } #view-tasks .scheduler-main-tabs button { font-size:16px; } #view-tasks .scheduler-top-actions { margin-left:0; } #view-tasks .scheduler-task-row .task-run-now,#view-tasks .scheduler-task-row .task-edit,#view-tasks .scheduler-task-row .task-menu-toggle { visibility:visible; } }
+
+/* Unified automation tasks use the same compact card layout as scheduled tasks. */
+#view-intelligence #automation-table-header { display:none !important; }
+#view-intelligence #automation-unified-tasks { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; width:min(100%,1120px); border:0; border-radius:0; overflow:visible; background:transparent; }
+#view-intelligence .automation-grid-card { position:relative; display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:minmax(74px,auto) 34px; gap:0 10px; min-height:155px; padding:19px 20px 15px; border:1px solid #e6e6e6; border-radius:17px; background:#fff; box-shadow:0 3px 10px rgba(0,0,0,.025); cursor:default; }
+#view-intelligence .automation-grid-card:hover,#view-intelligence .automation-grid-card:focus-within { z-index:2; border-color:#d6d6d6; box-shadow:0 6px 16px rgba(0,0,0,.055); }
+#view-intelligence .automation-grid-card.hidden { display:none; }
+#view-intelligence .automation-grid-card[data-enabled="0"] { opacity:.65; }
+#view-intelligence .automation-card-body { grid-column:1; grid-row:1; min-width:0; padding-right:5px; }
+#view-intelligence .automation-card-title { display:flex; align-items:center; min-height:22px; }
+#view-intelligence .automation-card-title b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#111; font-size:15px; font-weight:700; }
+#view-intelligence .automation-card-body p { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin:5px 0 0; color:#929292; font-size:13px; line-height:1.55; }
+#view-intelligence .automation-card-controls { grid-column:2; grid-row:1; display:flex; align-items:flex-start; gap:5px; }
+#view-intelligence .automation-card-controls > button,#view-intelligence .automation-card-more { display:inline-flex; align-items:center; justify-content:center; width:27px; height:28px; padding:0; color:#666; background:transparent; font-size:12px; }
+#view-intelligence .automation-card-controls > .automation-card-run,#view-intelligence .automation-card-controls > .automation-card-edit,#view-intelligence .automation-card-more { visibility:hidden; }
+#view-intelligence .automation-grid-card:hover .automation-card-run,#view-intelligence .automation-grid-card:hover .automation-card-edit,#view-intelligence .automation-grid-card:hover .automation-card-more,#view-intelligence .automation-grid-card:focus-within .automation-card-run,#view-intelligence .automation-grid-card:focus-within .automation-card-edit,#view-intelligence .automation-grid-card:focus-within .automation-card-more { visibility:visible; }
+#view-intelligence .automation-card-menu-wrap { position:relative; }
+#view-intelligence .automation-card-menu { position:absolute; z-index:20; top:29px; right:0; width:148px; padding:5px; border:1px solid #e5e5e5; border-radius:12px; background:#fff; box-shadow:0 8px 20px rgba(0,0,0,.11); }
+#view-intelligence .automation-card-menu.hidden { display:none; }
+#view-intelligence .automation-card-menu button { display:flex; align-items:center; width:100%; gap:7px; padding:8px 9px; border-radius:7px; color:#343434; font-size:12px; text-align:left; }
+#view-intelligence .automation-card-menu button:hover { background:#f5f5f5; }
+#view-intelligence .automation-card-menu button i { width:15px; font-size:12px; }
+#view-intelligence .automation-card-menu button.danger { color:#e34b5a; }
+#view-intelligence .automation-card-controls > .automation-card-switch { width:34px; margin-left:4px; }
+#view-intelligence .automation-card-switch span { position:relative; display:block; width:25px; height:15px; border-radius:999px; background:#d6d6d6; }
+#view-intelligence .automation-card-switch span::after { content:''; position:absolute; left:2px; top:2px; width:11px; height:11px; border-radius:50%; background:#fff; transition:transform .18s; }
+#view-intelligence .automation-card-switch[aria-checked="true"] span { background:#08bd92; }
+#view-intelligence .automation-card-switch[aria-checked="true"] span::after { transform:translateX(10px); }
+#view-intelligence .automation-card-switch.is-saving { opacity:.45; cursor:wait; }
+#view-intelligence .automation-card-switch:focus-visible { outline:2px solid #08bd92; outline-offset:2px; border-radius:8px; }
+#view-intelligence .automation-card-footer { grid-column:1/-1; grid-row:2; display:flex; justify-content:space-between; align-items:flex-end; gap:10px; border-top:1px solid #ededed; color:#999; font-size:12px; }
+#view-intelligence .automation-card-footer span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#view-intelligence .automation-card-footer i { margin-right:5px; }
+#view-intelligence .automation-list-tabs { gap:4px; margin-bottom:20px; border-bottom:0; }
+#view-intelligence .automation-list-tabs .automation-task-filter { padding:8px 13px; border-radius:9px; color:#888; font-size:13px; }
+#view-intelligence .automation-list-tabs .automation-task-filter.is-active { background:#f3f3f3; color:#191919; }
+#view-intelligence .automation-list-tabs .automation-task-filter::after { content:none; }
+#view-intelligence .automation-new-button { padding:8px 14px !important; border-radius:9px; background:#171717; font-size:13px; }
+.dark #view-intelligence #automation-unified-tasks { background:transparent; }
+.dark #view-intelligence .automation-grid-card { background:#202020; border-color:#3d3d3d; }
+.dark #view-intelligence .automation-card-title b { color:#eee; }
+.dark #view-intelligence .automation-card-footer { border-color:#393939; }
+.dark #view-intelligence .automation-card-menu { background:#202020; border-color:#3d3d3d; }
+.dark #view-intelligence .automation-card-menu button { color:#eee; }
+.dark #view-intelligence .automation-card-menu button:hover { background:#303030; }
+@media(max-width:960px){#view-intelligence #automation-unified-tasks{grid-template-columns:1fr;}}
+@media(max-width:620px){#view-intelligence .automation-card-run,#view-intelligence .automation-card-edit,#view-intelligence .automation-card-more{visibility:visible !important;}#view-intelligence .automation-list-tabs{flex-wrap:wrap;}}
+
+#scheduler-creator-modal .scheduler-creator-template-label { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; font-size:13px; color:#666; }
+#scheduler-creator-modal .scheduler-creator-template-label select { width:180px; min-height:36px; padding:0 10px; border:1px solid #e3e3e3; border-radius:9px; background:transparent; color:inherit; font-size:13px; }
+#scheduler-creator-modal .scheduler-creator-weather { display:grid; gap:14px; margin-top:16px; padding:18px; border:1px solid #e3e3e3; border-radius:16px; background:#fafafa; }
+#scheduler-creator-modal .scheduler-creator-weather.hidden,#scheduler-creator-modal .scheduler-creator-prompt.hidden { display:none; }
+#scheduler-creator-modal .scheduler-creator-weather label { display:block; font-size:13px; color:#555; }
+#scheduler-creator-modal .scheduler-creator-weather input { display:block; width:100%; min-height:40px; margin-top:6px; padding:0 12px; border:1px solid #ddd; border-radius:9px; background:#fff; color:#171717; font-size:13px; }
+#scheduler-creator-modal .scheduler-creator-weather-hours { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+#scheduler-creator-modal .scheduler-creator-weather p { margin:0; color:#888; font-size:12px; line-height:1.55; }
+.dark #scheduler-creator-modal .scheduler-creator-template-label,.dark #scheduler-creator-modal .scheduler-creator-weather label { color:#ccc; }
+.dark #scheduler-creator-modal .scheduler-creator-template-label select,.dark #scheduler-creator-modal .scheduler-creator-weather,.dark #scheduler-creator-modal .scheduler-creator-weather input { background:#242424; border-color:#444; color:#eee; }
+@media(max-width:620px){ #scheduler-creator-modal .scheduler-creator-weather-hours { grid-template-columns:1fr; } }
+
+/* Main Agent workspace: compact typography and a quiet, desktop-style sidebar. */
+#sidebar-header { min-height:76px; height:76px; padding:13px 18px; align-items:center; }
+.sidebar-brand-copy { display:flex; flex-direction:column; align-items:center; min-width:0; width:100%; text-align:center; line-height:1.2; }
+.sidebar-brand-copy small { margin-top:4px; color:#8b8b8b; font-size:10px; font-weight:400; }
+#sidebar-brand { font-size:13px; letter-spacing:0; }
+#sidebar-collapse-icon { display:block; width:17px; height:17px; transition:transform .2s ease; }
+#sidebar-collapse-icon.is-compact { transform:rotate(180deg); }
+#sidebar:not(.w-16) #sidebar-new-chat { display:none; }
+#sidebar nav { padding:10px 11px 16px; }
+#sidebar nav .sidebar-item { min-height:34px; padding:7px 11px; font-size:12px; line-height:20px; }
+#sidebar nav .sidebar-item .item-icon { font-size:12px; }
+#sidebar .menu-group > button { min-height:33px; margin:7px 0 1px; padding:7px 11px; background:transparent; font-size:12px; letter-spacing:0; }
+#sidebar .menu-group.open > button { background:transparent; }
+#sidebar .menu-group .menu-group-items { margin-left:0; padding-left:0 !important; border-left:0; }
+#sidebar .menu-group .menu-group-items > .sidebar-item { margin-left:0; width:100%; }
+#sidebar .sidebar-create-task { display:flex; align-items:center; gap:11px; width:100%; min-height:36px; padding:7px 11px; border-radius:9px; text-align:left; font-size:12px; font-weight:600; }
+#sidebar .sidebar-create-task .item-icon { width:20px; text-align:center; font-size:13px; }
+#sidebar .sidebar-latest-session { margin:2px 0 9px 31px; max-height:none; }
+#sidebar .sidebar-latest-entry { min-height:31px; padding:5px 8px; color:#6b7280; font-size:12px; }
+#sidebar .sidebar-quick-entry { font-size:12px; }
+#sidebar .sidebar-latest-entry.is-current { font-weight:600; }
+#sidebar .sidebar-recent-empty { padding:5px 8px; color:#999; font-size:11px; }
+#sidebar-owner-area { border-top:1px solid rgba(128,128,128,.12); }
+html:not(.dark) #sidebar { background:#f5f5f5 !important; border-right-color:#e9e9e9; }
+html:not(.dark) #sidebar .menu-group > button,html:not(.dark) #sidebar .menu-group.open > button { background:transparent; color:#757575; }
+html:not(.dark) #sidebar .sidebar-item.active,html:not(.dark) #sidebar .sidebar-latest-entry.is-current { background:#e8e8e8; color:#171717; }
+html:not(.dark) #sidebar .sidebar-item.active .item-icon { color:#333; }
+html:not(.dark) #sidebar .sidebar-create-task { color:#222; }
+html:not(.dark) #sidebar .sidebar-create-task:hover,html:not(.dark) #sidebar .sidebar-latest-entry:hover { background:#e9e9e9; color:#171717; }
+html.dark #sidebar .sidebar-create-task { color:#e5e5e5; }
+html.dark #sidebar .sidebar-create-task:hover,html.dark #sidebar .sidebar-latest-entry:hover { background:#242424; color:#fff; }
+html.dark #sidebar .sidebar-latest-entry.is-current { background:#292929; color:#f3f3f3; }
+#sidebar.w-16 #sidebar-header { min-height:56px; height:auto; padding:8px 4px; }
+#sidebar.w-16 .sidebar-brand-copy small,#sidebar.w-16 .sidebar-create-task span,#sidebar.w-16 .sidebar-latest-session { display:none; }
+#sidebar.w-16 .sidebar-create-task { justify-content:center; padding:7px 0; }
+
+/* Keep the new-chat page scannable; reveal explanations only on hover or focus. */
+#welcome-screen #welcome-subtitle { margin-bottom:14px !important; }
+#welcome-capability-overview { margin-bottom:14px !important; }
+#welcome-capability-content { gap:8px; }
+#welcome-capability-content .welcome-capability-card,
+#welcome-suggestion-content .welcome-suggestion-card { position:relative; min-height:48px; padding:10px 12px; }
+#welcome-suggestion-content .welcome-suggestion-card { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+#welcome-suggestion-content .welcome-suggestion-card > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.welcome-card-tooltip,
+#welcome-screen .example-card > p { position:absolute; left:0; top:calc(100% + 7px); z-index:40; width:max-content; max-width:min(300px,calc(100vw - 32px)); margin:0 !important; padding:9px 11px; border:1px solid #e2e8f0; border-radius:9px; background:#fff; box-shadow:0 8px 24px rgba(15,23,42,.12); color:#475569; font-size:12px !important; line-height:1.5 !important; white-space:normal; text-align:left; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .15s ease,visibility .15s ease; }
+.dark .welcome-card-tooltip,.dark #welcome-screen .example-card > p { background:#262626; border-color:#444; color:#e5e5e5; }
+.welcome-capability-card:hover > .welcome-card-tooltip,
+.welcome-capability-card:focus-visible > .welcome-card-tooltip,
+.welcome-suggestion-card:hover > .welcome-card-tooltip,
+.welcome-suggestion-card:focus-visible > .welcome-card-tooltip,
+#welcome-screen .example-card:hover > p,
+#welcome-screen .example-card:focus-visible > p { opacity:1; visibility:visible; }
+#welcome-capability-content .welcome-capability-card:nth-child(3n) > .welcome-card-tooltip,
+#welcome-suggestion-content .welcome-suggestion-card:nth-child(4n) > .welcome-card-tooltip,
+#welcome-screen .example-card:nth-child(3n) > p { left:auto; right:0; }
+#welcome-screen .example-card { position:relative; min-height:52px; padding:10px 12px !important; }
+#welcome-screen .example-card > div { margin-bottom:0 !important; }
+#welcome-screen .example-card:focus-visible { outline:2px solid #46a87a; outline-offset:2px; }
+@media(max-width:1023px){#welcome-capability-content .welcome-capability-card:nth-child(3n) > .welcome-card-tooltip,#welcome-suggestion-content .welcome-suggestion-card:nth-child(4n) > .welcome-card-tooltip { left:0; right:auto; }#welcome-capability-content .welcome-capability-card:nth-child(2n) > .welcome-card-tooltip,#welcome-suggestion-content .welcome-suggestion-card:nth-child(2n) > .welcome-card-tooltip { left:auto; right:0; }}
+@media(max-width:639px){#welcome-capability-content .welcome-capability-card > .welcome-card-tooltip,#welcome-suggestion-content .welcome-suggestion-card > .welcome-card-tooltip,#welcome-screen .example-card > p { left:0; right:auto; }}
+
+#app-header { height:64px; min-height:64px; padding:0 24px; }
+#main-content:has(#view-chat.active) #app-breadcrumb #breadcrumb-group,
+#main-content:has(#view-chat.active) #app-breadcrumb > i { display:none; }
+#main-content:has(#view-chat.active) #breadcrumb-page { color:inherit; font-size:14px; font-weight:700; }
+#main-content:has(#view-chat.active) #chat-header-actions { gap:4px; }
+#main-content:has(#view-chat.active) .chat-header-action { width:34px; height:34px; color:#525252; font-size:14px; }
+#chat-messages > .user-message-group,#chat-messages > .bot-message-group,#chat-messages > .context-divider,#chat-messages > #history-load-more { width:min(100%,850px); }
+#chat-messages > .user-message-group,#chat-messages > .bot-message-group { padding:18px 12px; }
+#chat-messages .bot-message-group .msg-content,#chat-messages .user-bubble { font-size:14px; line-height:1.75; }
+#chat-messages .agent-message-name { font-size:13px; }
+.chat-composer-width { max-width:850px; }
+@media(max-width:1023px){ #app-header { padding:0 16px; } }
+
+/* Sidebar shortcuts stay beside search; the account footer stays minimal. */
+#sidebar-top-actions { gap:2px; }
+#sidebar-top-actions #scheduler-footer-shortcut,#sidebar-top-actions #notification-toggle { width:30px; min-width:30px; height:32px; }
+#sidebar-top-actions #scheduler-footer-shortcut .owner-scheduler-icon { width:16px; height:16px; }
+#sidebar-top-actions #notification-toggle .owner-bell-icon { font-size:15px; }
+#sidebar-top-actions #notification-toggle:has(.owner-notification-badge:not(.hidden)) { color:#0d9488; }
+#sidebar-top-actions .owner-notification-badge { top:-2px; right:-3px; min-width:15px; height:15px; padding:0 3px; background:#0d9488; box-shadow:0 0 0 2px #f5f5f5; font-size:9px; line-height:15px; }
+html.dark #sidebar-top-actions .owner-notification-badge { box-shadow:0 0 0 2px #050505; }
+#sidebar-top-actions #notification-menu { position:absolute; top:calc(100% + 10px); left:0; right:auto; bottom:auto; margin:0; }
+#sidebar-owner-area { border-top:0; }
+#sidebar .sidebar-recent-label { margin:5px 0 2px 39px; color:#949494; font-size:11px; line-height:18px; }
+#sidebar.w-16 .sidebar-recent-label { display:none; }
+#sidebar.w-16 #notification-menu { left:48px; top:0; }
+@media(max-width:640px){ #sidebar-top-actions #notification-menu { position:fixed; top:72px; left:12px; right:12px; width:auto; max-width:none; } }
+
+#sidebar .sidebar-project-entry { gap:4px; }
+#sidebar .sidebar-project-expand { display:inline-flex; align-items:center; justify-content:center; flex:0 0 10px; width:10px; height:22px; padding:0; border-radius:5px; color:#7b7b7b; }
+#sidebar .sidebar-project-expand:hover { background:rgba(128,128,128,.12); color:inherit; }
+#sidebar .sidebar-project-icon { display:block; flex:0 0 16px; width:16px; height:16px; margin-right:4px; }
+#sidebar.w-16 .sidebar-project-entry { gap:0; }
+
+/* Project spaces use a folder tree with their conversations and project tasks. */
+#sidebar .sidebar-space-header { position:relative; display:flex; align-items:center; height:32px; margin:10px 0 2px; border-radius:7px; }
+#sidebar .sidebar-space-header:hover { background:#e9e9e9; }
+#sidebar .sidebar-space-heading { display:flex; align-items:center; gap:4px; flex:1; min-width:0; height:100%; padding:0 14px; text-align:left; color:#929292; font-size:11px; }
+#sidebar .sidebar-space-heading:hover { color:#333; }
+#sidebar .sidebar-space-header-caret { margin-left:2px; font-size:8px; color:#aaa; }
+#sidebar .sidebar-space-actions { display:flex; align-items:center; gap:1px; position:absolute; right:4px; top:3px; height:26px; padding-left:12px; background:#e9e9e9; opacity:0; pointer-events:none; }
+#sidebar .sidebar-space-header:hover .sidebar-space-actions,#sidebar .sidebar-space-header:focus-within .sidebar-space-actions { opacity:1; pointer-events:auto; }
+#sidebar .sidebar-space-actions button,#sidebar .sidebar-space-folder-actions button { display:grid; place-items:center; width:24px; height:24px; border-radius:5px; color:#555; font-size:12px; }
+#sidebar .sidebar-space-actions button:hover,#sidebar .sidebar-space-folder-actions button:hover { background:#dcdcdc; color:#171717; }
+#sidebar .sidebar-project-tree { margin:0 3px 0 10px; padding:0; border:0; max-height:none; overflow:visible; }
+#sidebar .sidebar-space-group { min-width:0; }
+#sidebar .sidebar-space-folder-row { position:relative; display:flex; align-items:center; min-width:0; height:34px; padding:0 3px; border-radius:7px; }
+#sidebar .sidebar-space-folder-row:hover { background:#e9e9e9; }
+#sidebar .sidebar-space-folder-actions { display:flex; align-items:center; gap:1px; position:absolute; right:3px; top:4px; height:26px; padding-left:8px; background:#e9e9e9; opacity:0; pointer-events:none; }
+#sidebar .sidebar-space-folder-row:hover .sidebar-space-folder-actions,#sidebar .sidebar-space-folder-row:focus-within .sidebar-space-folder-actions { opacity:1; pointer-events:auto; }
+#sidebar .sidebar-space-folder-toggle { flex:0 0 20px; display:grid; place-items:center; height:26px; color:#333; font-size:13px; }
+#sidebar .sidebar-space-folder-name { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; padding:0 4px 0 5px; color:#222; font-size:12px; font-weight:600; }
+#sidebar .sidebar-space-children { display:grid; gap:1px; margin:0 0 5px 16px; }
+#sidebar .sidebar-space-child { display:flex; align-items:center; gap:5px; width:100%; min-width:0; height:33px; padding:0 6px 0 13px; border-radius:7px; text-align:left; color:#555; font-size:12px; }
+#sidebar .sidebar-space-child:hover,#sidebar .sidebar-space-child.is-active { background:#e9e9e9; color:#171717; }
+#sidebar .sidebar-space-child-title { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#sidebar .sidebar-task-more { display:none; flex:none; width:23px; height:23px; border-radius:6px; color:#777; align-items:center; justify-content:center; }
+#sidebar .sidebar-space-child:hover .sidebar-task-more,#sidebar .sidebar-space-child:focus-within .sidebar-task-more { display:flex; }
+#sidebar .sidebar-space-child:hover .sidebar-space-date,#sidebar .sidebar-space-child:hover .sidebar-space-dot { display:none; }
+#sidebar .sidebar-task-more:hover { background:#d7d7d7; color:#111; }
+#sidebar .sidebar-task-pinned { flex:none; font-size:10px; color:#8b8b8b; }
+#sidebar .sidebar-task-select { flex:none; width:14px; height:14px; accent-color:#0db981; }
+.sidebar-task-menu { width:170px; }
+.sidebar-task-menu .sidebar-task-menu-divider { height:1px; background:#ececec; margin:4px 5px; }
+.sidebar-task-menu button.danger { color:#d6414a; }
+.sidebar-task-batch-bar { display:flex; flex-wrap:wrap; gap:5px; align-items:center; padding:8px 10px; border-top:1px solid #e5e5e5; font-size:11px; color:#666; }
+.sidebar-task-batch-bar.hidden { display:none; }
+.sidebar-task-batch-bar button { padding:4px 7px; border:1px solid #ddd; border-radius:6px; color:#333; }
+.sidebar-task-batch-bar button.danger { color:#d6414a; }
+.sidebar-task-batch-bar button:disabled { opacity:.45; }
+.sidebar-archive-overlay { position:fixed; inset:0; z-index:11000; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.32); }
+.sidebar-archive-card { width:min(480px,calc(100vw - 30px)); max-height:min(70vh,600px); padding:18px; border-radius:16px; background:#fff; box-shadow:0 18px 60px rgba(0,0,0,.2); color:#222; }
+.sidebar-archive-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+.sidebar-archive-head button { font-size:23px; color:#777; }
+.sidebar-archive-list { max-height:calc(70vh - 85px); overflow:auto; color:#777; font-size:13px; }
+.sidebar-archive-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid #eee; }
+.sidebar-archive-row span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#333; }
+.sidebar-archive-row button { padding:5px 10px; border:1px solid #ddd; border-radius:7px; color:#0f8f66; }
+html.dark .sidebar-archive-card { background:#242424; color:#eee; }
+html.dark .sidebar-archive-row,html.dark .sidebar-task-menu .sidebar-task-menu-divider { border-color:#3a3a3a; }
+html.dark .sidebar-archive-row span { color:#eee; }
+html.dark .sidebar-task-batch-bar { border-color:#333; color:#aaa; }
+html.dark .sidebar-task-batch-bar button { border-color:#444; color:#ddd; }
+html.dark #sidebar .sidebar-task-more:hover { background:#353535; color:#fff; }
+#sidebar .sidebar-space-date { flex:none; color:#aaa; font-size:10px; white-space:nowrap; }
+#sidebar .sidebar-space-dot { flex:none; width:6px; height:6px; margin:0 7px; border-radius:50%; background:#10b981; }
+#sidebar .sidebar-space-empty { padding:7px 8px 7px 24px; color:#999; font-size:11px; }
+#sidebar.w-16 .sidebar-space-heading,#sidebar.w-16 .sidebar-project-tree { display:none; }
+#sidebar.w-16 .sidebar-space-header { display:none; }
+html.dark #sidebar .sidebar-space-heading { color:#777; }
+html.dark #sidebar .sidebar-space-heading:hover,html.dark #sidebar .sidebar-space-folder-toggle,html.dark #sidebar .sidebar-space-folder-name { color:#ddd; }
+html.dark #sidebar .sidebar-space-header:hover,html.dark #sidebar .sidebar-space-folder-row:hover,html.dark #sidebar .sidebar-space-child:hover,html.dark #sidebar .sidebar-space-child.is-active,html.dark #sidebar .sidebar-space-actions,html.dark #sidebar .sidebar-space-folder-actions { background:#242424; }
+html.dark #sidebar .sidebar-space-actions button,html.dark #sidebar .sidebar-space-folder-actions button { color:#bbb; }
+html.dark #sidebar .sidebar-space-actions button:hover,html.dark #sidebar .sidebar-space-folder-actions button:hover { background:#353535; color:#fff; }
+html.dark #sidebar .sidebar-space-child { color:#aaa; }
+html.dark #sidebar .sidebar-space-child:hover,html.dark #sidebar .sidebar-space-child.is-active { color:#eee; }
+.sidebar-space-menu { position:fixed; z-index:10000; width:176px; padding:5px; border:1px solid #e5e5e5; border-radius:12px; background:#fff; box-shadow:0 12px 28px rgba(0,0,0,.14); }
+.sidebar-space-menu button { display:flex; align-items:center; gap:11px; width:100%; height:34px; padding:0 10px; border-radius:7px; text-align:left; color:#333; font-size:12px; white-space:nowrap; }
+.sidebar-space-menu button:hover { background:#f3f3f3; }
+.sidebar-space-menu button i { width:15px; text-align:center; font-size:12px; }
+.sidebar-space-menu button[data-action="remove"] { color:#b4232f; }
+html.dark .sidebar-space-menu { background:#242424; border-color:#444; }
+html.dark .sidebar-space-menu button { color:#e5e5e5; }
+html.dark .sidebar-space-menu button:hover { background:#383838; }
+html.dark .sidebar-space-menu button[data-action="remove"] { color:#f87171; }
+
+#personal-todo-section [id^="personal-todo-filter-"] { color:#64748b; }
+#personal-todo-section [id^="personal-todo-filter-"].is-active { color:#047857; font-weight:600; }
+.dark #personal-todo-section [id^="personal-todo-filter-"] { color:#cbd5e1; }
+.dark #personal-todo-section [id^="personal-todo-filter-"].is-active { color:#6ee7b7; }

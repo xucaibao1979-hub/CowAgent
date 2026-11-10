@@ -37,8 +37,8 @@ class DeliveryAcceptanceTests(unittest.TestCase):
         self.send.assert_called_once()
 
     def test_email_delivery(self):
-        service = EmailSecretaryService(str(self.root), {'imap_host': 'mail.example.com', 'username': 'test', 'password': 'test'})
-        task = service.save_task({'name': '邮件验收', 'notifications': [self.target]})
+        service = EmailSecretaryService(str(self.root), {'source_type': 'imap', 'imap_host': 'mail.example.com', 'username': 'test', 'password': 'test'})
+        task = service.save_task({'name': '邮件验收', 'source_type': 'imap', 'notifications': [self.target]})
         with patch('imaplib.IMAP4_SSL', FakeImap):
             result = service.run(task['id'])
         self.assert_delivery(result)

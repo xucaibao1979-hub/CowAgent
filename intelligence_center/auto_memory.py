@@ -74,6 +74,7 @@ def observe_user_message(root: str | Path, text: str, *, source: str = "chat", s
             source_type = "weixin_message"
         source_id = str(session_id or "").strip() or f"{source}:{channel}".strip(":")
         for item in candidates:
+            related = store.possible_conflicts(item["content"], item["fact_type"])
             saved.append(store.upsert(
                 content=item["content"],
                 fact_type=item["fact_type"],
@@ -83,6 +84,7 @@ def observe_user_message(root: str | Path, text: str, *, source: str = "chat", s
                 tags=item["tags"] + ([channel] if channel else []),
                 scope="private",
                 confidence=0.82,
+                status="pending" if related else "active",
                 metadata={
                     "source_type": source_type,
                     "source_id": source_id,
@@ -92,6 +94,7 @@ def observe_user_message(root: str | Path, text: str, *, source: str = "chat", s
                     "channel": channel,
                     "source": source,
                     "extractor": "explicit_rule_v1",
+                    "possible_conflicts": [entry["id"] for entry in related],
                 },
             ))
         return [{"id": fact.get("id"), "type": fact.get("fact_type"), "content": fact.get("content")} for fact in saved if fact]

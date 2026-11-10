@@ -111,7 +111,8 @@ class UnifiedTaskCatalog:
         automation = self.automation_service.list_tasks().get("tasks", [])
         scheduled = self.scheduler_store.list_tasks() if self.scheduler_store else []
         items = [normalize_automation_task(x) for x in automation] + [normalize_scheduler_task(x) for x in scheduled]
-        recovery = _latest_recovery_by_task(self.automation_service.root)
+        root = getattr(self.automation_service, "root", None)
+        recovery = _latest_recovery_by_task(root) if root is not None else {}
         for item in items:
             item.update(recovery.get(str(item.get("id") or ""), {}))
         needle = str(query or "").strip().lower()

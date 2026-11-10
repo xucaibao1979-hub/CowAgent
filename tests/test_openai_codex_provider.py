@@ -37,7 +37,9 @@ class OpenAICodexProviderTests(unittest.TestCase):
         replies=[(200,{"user_code":"ABCD-EFGH","device_auth_id":"device-1","interval":3}),(200,{"authorization_code":"code","code_verifier":"verifier"}),(200,{"access_token":access,"refresh_token":"refresh"})]
         with patch.object(auth,'_path',return_value=self.auth_path),patch.object(auth,'_request',side_effect=replies):
             started=auth.start_device_login();auth._pending['last_poll']=0;result=auth.poll_device_login()
-        self.assertEqual(started['user_code'],'ABCD-EFGH');self.assertTrue(result['configured']);self.assertEqual(json.loads(self.auth_path.read_text())['account_id'],'acct-1')
+        from common.secure_storage import load_secure_json
+        saved, _ = load_secure_json(str(self.auth_path))
+        self.assertEqual(started['user_code'],'ABCD-EFGH');self.assertTrue(result['configured']);self.assertEqual(saved['account_id'],'acct-1')
 
     def test_codex_responses_are_adapted(self):
         credentials={"access_token":"token","account_id":"acct"}

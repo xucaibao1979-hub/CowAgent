@@ -11,6 +11,12 @@ from agent.tools.scheduler.scheduler_tool import SchedulerTool
 from agent.tools.scheduler.task_store import TaskStore
 
 
+@pytest.fixture(autouse=True)
+def active_test_backend(monkeypatch):
+    """These unit tests exercise manual runs, not instance ownership."""
+    monkeypatch.setattr(SchedulerService, "_runtime_instance_guard", lambda self: (True, "test instance"))
+
+
 def _task(task_id="task-1", enabled=False):
     return {
         "id": task_id,
@@ -66,7 +72,7 @@ def test_manual_run_rejects_duplicate_execution(tmp_path):
     service = SchedulerService(store, execute)
     service.run_task_now("task-1")
     assert started.wait(timeout=2)
-    with pytest.raises(RuntimeError, match="already running"):
+    with pytest.raises(RuntimeError, match="未完成的执行记录"):
         service.run_task_now("task-1")
     release.set()
 

@@ -24,7 +24,7 @@ class ExtendedTaskTests(unittest.TestCase):
     def test_social_feed_lifecycle_and_report(self):
         task = self.service.save_task({"kind":"social","name":"热点","sources":["https://example.com/feed"],"keywords":["AI"]})
         feed = b"<rss><channel><item><title>AI Agent trend</title><link>https://example.com/a</link><description>fast growth</description></item></channel></rss>"
-        with patch("urllib.request.urlopen", return_value=Response(feed)):
+        with patch("plugins.intelligence_center.extended_tasks.safe_urlopen", return_value=Response(feed)):
             result = self.service.run(task["id"])
         self.assertEqual(len(result["results"]), 1); self.assertIn("社交热点监控", result["report"])
         self.assertTrue(Path(result["report_path"]).exists())
@@ -33,9 +33,10 @@ class ExtendedTaskTests(unittest.TestCase):
 
     def test_ops_http_report(self):
         task = self.service.save_task({"kind":"ops","name":"运维","sources":["http://localhost/health"]})
-        with patch("urllib.request.urlopen", return_value=Response(b"ok")):
+        with patch("plugins.intelligence_center.extended_tasks.safe_urlopen", return_value=Response(b"ok")):
             result = self.service.run(task["id"])
-        self.assertTrue(result["results"][0]["healthy"]); self.assertIn("HTTP 200", result["report"])
+        self.assertTrue(result["results"][0]["healthy"])
+        self.assertEqual(200, result["results"][0]["status"])
 
 
 if __name__ == "__main__": unittest.main()

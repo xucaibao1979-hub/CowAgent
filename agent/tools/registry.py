@@ -18,7 +18,7 @@ READ_ONLY_TOOLS = frozenset({
     "read", "ls", "search_files", "memory_search", "memory_get",
     "web_search", "web_fetch", "vision", "weather",
 })
-WORKSPACE_WRITE_TOOLS = frozenset({"write", "edit"})
+WORKSPACE_WRITE_TOOLS = frozenset({"write", "edit", "task_plan"})
 EXTERNAL_ACTION_TOOLS = frozenset({
     "send", "browser", "scheduler", "env_config", "local_email",
 })

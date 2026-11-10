@@ -5,7 +5,10 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-sys.modules.setdefault("regex", re)
+try:
+    import regex  # noqa: F401
+except ImportError:
+    sys.modules.setdefault("regex", re)
 
 
 class _Response:

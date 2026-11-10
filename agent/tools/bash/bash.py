@@ -4,6 +4,7 @@ Bash tool - Execute bash commands
 
 import os
 import re
+import shutil
 import signal
 import sys
 import subprocess
@@ -86,6 +87,7 @@ SAFETY:
         self.default_timeout = self.config.get("timeout", self.DEFAULT_TIMEOUT)
         # Enable safety mode by default (can be disabled in config)
         self.safety_mode = self.config.get("safety_mode", True)
+        self._python_runtime_cache = {}
         # Keep the template with the {cwd} placeholder so the description can be
         # re-rendered when the working directory changes (e.g. opening a project).
         self._description_template = self.description
@@ -117,6 +119,44 @@ SAFETY:
         template = getattr(self, "_description_template", None)
         if template:
             self.description = template.replace("{cwd}", self.cwd)
+
+    def _python_runtime_dir(self, env: dict) -> str:
+        """Find a usable Python before Windows' nonfunctional Store alias."""
+        if not self._IS_WIN:
+            return ""
+        cache_key = (os.path.abspath(self.cwd), env.get("COW_PYTHON"), env.get("VIRTUAL_ENV"))
+        cached = self._python_runtime_cache.get(cache_key)
+        if cached and os.path.isfile(os.path.join(cached, "python.exe")):
+            return cached
+        candidates = []
+        for key in ("COW_PYTHON", "VIRTUAL_ENV"):
+            value = str(env.get(key) or "").strip().strip('"')
+            if not value:
+                continue
+            candidates.append(value if value.lower().endswith("python.exe") else os.path.join(value, "Scripts", "python.exe"))
+        current = os.path.abspath(self.cwd)
+        while True:
+            for folder in (".venv", "venv"):
+                candidates.append(os.path.join(current, folder, "Scripts", "python.exe"))
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            current = parent
+        on_path = shutil.which("python", path=env.get("PATH"))
+        if on_path and "\\windowsapps\\" not in on_path.lower():
+            candidates.append(on_path)
+        for candidate in candidates:
+            if not os.path.isfile(candidate):
+                continue
+            try:
+                check = subprocess.run([candidate, "--version"], capture_output=True, timeout=3)
+                if check.returncode == 0:
+                    found = os.path.dirname(candidate)
+                    self._python_runtime_cache[cache_key] = found
+                    return found
+            except (OSError, subprocess.SubprocessError):
+                continue
+        return ""
 
     def execute(self, args: Dict[str, Any]) -> ToolResult:
         """
@@ -203,6 +243,11 @@ SAFETY:
                     logger.debug("[Bash] python-dotenv not installed, skipping .env loading")
                 except Exception as e:
                     logger.debug(f"[Bash] Failed to load .env: {e}")
+
+            if self._IS_WIN:
+                python_dir = self._python_runtime_dir(env)
+                if python_dir:
+                    env["PATH"] = python_dir + os.pathsep + env.get("PATH", "")
 
             # getuid() only exists on Unix-like systems
             if hasattr(os, 'getuid'):

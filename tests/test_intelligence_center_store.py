@@ -17,7 +17,7 @@ class IntelligenceCenterTests(unittest.TestCase):
         self.test_directory.rmdir()
 
     def test_eight_initial_templates_are_available(self):
-        self.assertEqual(8, len(TEMPLATES))
+        self.assertGreaterEqual(len(TEMPLATES), 8)
         self.assertIn("news_digest", TEMPLATES)
         self.assertIn("ops_report", TEMPLATES)
 

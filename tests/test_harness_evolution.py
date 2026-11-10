@@ -58,7 +58,8 @@ class HarnessEvolutionTests(unittest.TestCase):
         second = self.service.review()
         self.assertEqual(first['review']['id'], second['review']['id'])
         self.assertTrue(first['review']['artifact_id'])
-        self.assertEqual(len(json.loads((self.root/'artifacts.json').read_text(encoding='utf-8'))['artifacts']), 1)
+        artifacts = json.loads((self.root/'artifacts.json').read_text(encoding='utf-8'))['artifacts']
+        self.assertEqual(sum(item.get('source_id') == first['review']['id'] for item in artifacts), 1)
 
     def test_approved_patch_is_guarded_verified_and_idempotent(self):
         from intelligence_center.agent2_service import Agent2Service

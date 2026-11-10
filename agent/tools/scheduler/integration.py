@@ -4,6 +4,7 @@ Integration module for scheduler with AgentBridge
 
 import os
 import threading
+import time
 from typing import Dict, Optional
 from config import conf
 from common.log import logger
@@ -130,7 +131,7 @@ def init_scheduler(agent_bridge, workspace_root: str = None, agent_id: str = Non
                         # switch to the newest sendable conversation; the
                         # older readiness probe may falsely fail after QR
                         # refreshes or backend restarts.
-                        skip_readiness_probe = action_type == "send_message" and channel_type in {
+                        skip_readiness_probe = action_type in {"send_message", "tool_call"} and channel_type in {
                             "weixin", "wecom_bot", "email", "webhook"
                         }
                         if not skip_readiness_probe and not _is_channel_ready(channel_type, readiness_receiver, agent_id):
@@ -664,6 +665,8 @@ def _send_scheduler_output(
     channel_type = str(action.get("channel_type") or context.get("channel_type") or "web").strip()
     receiver = str(action.get("receiver") or context.get("receiver") or "").strip()
     delivery_session_id = _delivery_session_id(action)
+    _audit_delivery(task, "content", channel_type, receiver, "success" if content else "warning",
+                    "任务内容已生成，准备发送" if content else "任务结果为空", {"content_length": len(content or "")})
     preflight = _preflight_scheduler_delivery(task, channel_type, receiver)
 
     if action.get("silent", False):
@@ -692,6 +695,17 @@ def _send_scheduler_output(
         _remember_delivered_output(agent_bridge, task, channel_type, content, agent_id)
         if action.get("_inbox_only"):
             return True
+
+    run_id = str(task.get("_run_id") or "")
+    journal_root = str(task.get("_run_journal_root") or "")
+    if run_id and journal_root:
+        try:
+            from agent.execution.run_journal import RunJournal
+            RunJournal(journal_root).step(run_id, "send_started", "running",
+                                          expected=f"{channel_type} 接口接受通知",
+                                          actual="已开始发送，结果尚未确认")
+        except Exception as error:
+            logger.warning(f"[Scheduler] Send checkpoint skipped: {error}")
 
     try:
         if channel_type == "webhook":
@@ -733,6 +747,8 @@ def _send_scheduler_output(
             if request_id:
                 channel.request_to_session[request_id] = delivery_session_id
 
+        _audit_delivery(task, "send", channel_type, receiver, "info", "正在提交给通知通道")
+        send_started = time.monotonic()
         delivered = channel.send(Reply(ReplyType.TEXT, content), context)
         if delivered is False:
             detail = getattr(channel, "_last_send_error", "") or getattr(channel, "_last_error", "")
@@ -744,7 +760,8 @@ def _send_scheduler_output(
             receiver,
             "success",
             "通道已接受发送请求；如需逐条确认，可在连接中心查看会话状态",
-            {"provider_result": "accepted", "preflight_ok": bool(preflight.get("ok", True))},
+            {"provider_result": "accepted", "preflight_ok": bool(preflight.get("ok", True)),
+             "duration_ms": round((time.monotonic() - send_started) * 1000)},
         )
         _record_scheduler_notification_event(task, channel_type, receiver, True, content=content)
         _remember_delivered_output(agent_bridge, task, channel_type, content, agent_id)
@@ -1055,7 +1072,10 @@ def _execute_agent_task(task: dict, agent_bridge, agent_id: str = None) -> bool:
 
             if not _send_scheduler_output(task, agent_bridge, context, reply.content, report_path, "success", agent_id):
                 return False
-            logger.info(f"[Scheduler] Task {task['id']} executed successfully, result sent to {receiver}")
+            if task.get("_last_run_status") == "failed":
+                logger.warning(f"[Scheduler] Task {task['id']} generated content, but primary delivery failed; Web fallback retained")
+            else:
+                logger.info(f"[Scheduler] Task {task['id']} executed successfully, channel accepted result for {receiver}")
             return True
 
         except Exception as e:
@@ -1123,6 +1143,7 @@ def _execute_send_message(task: dict, agent_bridge, agent_id: str = None) -> boo
                     "id": task.get("id"),
                     "name": task.get("name") or "定时提醒",
                     "notifications": [target],
+                    "action": action,
                 }
                 results = NotificationDispatcher().dispatch(notify_task, content or "提醒内容为空")
                 real_success = [
@@ -1264,7 +1285,24 @@ def _execute_tool_call(task: dict, agent_bridge, agent_id: str = None) -> bool:
     try:
         action = task.get("action", {})
         tool_name = action.get("call_name") or action.get("tool_name")
-        tool_params = action.get("call_params") or action.get("tool_params", {})
+        tool_params = dict(action.get("call_params") or action.get("tool_params", {}))
+        weather_template = action.get("template") or {}
+        weather_brief = isinstance(weather_template, dict) and weather_template.get("type") == "weather_hourly_brief"
+        if weather_brief:
+            if tool_name != "weather":
+                raise ValueError("天气提醒模板必须使用天气工具")
+            from datetime import datetime, time as clock_time, timezone, timedelta
+            end_hour = int(weather_template["hour_end"])
+            end_time = str(weather_template.get("end_time") or f'{end_hour:02d}:00')
+            now = datetime.now(timezone(timedelta(hours=8)))
+            forecast_today = now.time() < clock_time.fromisoformat(end_time)
+            action["_forecast_target_date"] = (now.date() if forecast_today else (now + timedelta(days=1)).date()).isoformat()
+            tool_params = {
+                "location": str(weather_template["location"]),
+                "date": "today" if forecast_today else "tomorrow",
+                "hour_start": int(weather_template["hour_start"]),
+                "hour_end": end_hour,
+            }
         result_prefix = action.get("result_prefix", "")
         receiver = action.get("receiver")
         is_group = action.get("is_group", False)
@@ -1274,22 +1312,53 @@ def _execute_tool_call(task: dict, agent_bridge, agent_id: str = None) -> bool:
         if not tool_name:
             logger.error(f"[Scheduler] Task {task['id']}: No tool_name specified")
             _store_scheduler_artifact(task, "缺少工具名称，任务未执行。", status="failed", error="No tool_name specified")
+            task["_last_run_status"] = "failed"
+            task["_last_result_summary"] = "缺少工具名称，任务未执行"
             return True
         if not receiver:
             logger.error(f"[Scheduler] Task {task['id']}: No receiver specified")
             _store_scheduler_artifact(task, "缺少消息接收人，任务未发送。", status="failed", error="No receiver specified")
+            task["_last_run_status"] = "failed"
+            task["_last_result_summary"] = "缺少消息接收人，任务未发送"
             return True
 
-        from agent.tools.tool_manager import ToolManager
-        tool = ToolManager().create_tool(tool_name)
+        if weather_brief:
+            from agent.tools.weather.weather import WeatherTool
+            tool = WeatherTool()
+        else:
+            from agent.tools.tool_manager import ToolManager
+            tool = ToolManager().create_tool(tool_name)
         if not tool:
             logger.error(f"[Scheduler] Task {task['id']}: Tool '{tool_name}' not found")
             _store_scheduler_artifact(task, f"工具“{tool_name}”不存在，任务未执行。", status="failed", error=f"Tool '{tool_name}' not found")
+            task["_last_run_status"] = "failed"
+            task["_last_result_summary"] = f"工具“{tool_name}”不存在"
             return True
 
         logger.info(f"[Scheduler] Task {task['id']}: Executing tool '{tool_name}' with params {tool_params}")
+        _audit_delivery(task, "tool", channel_type, receiver, "info", f"开始调用 {tool_name}", {"tool": tool_name})
+        tool_started = time.monotonic()
         result = tool.execute(tool_params)
-        content = result.result if hasattr(result, 'result') else str(result)
+        tool_elapsed_ms = round((time.monotonic() - tool_started) * 1000)
+        _audit_delivery(task, "tool", channel_type, receiver,
+                        "success" if getattr(result, "status", "") == "success" else "failed",
+                        f"{tool_name} {'已产出结果' if getattr(result, 'status', '') == 'success' else '执行失败'}",
+                        {"tool": tool_name, "duration_ms": tool_elapsed_ms})
+        if tool_name == "weather" and getattr(result, "status", "") != "success":
+            detail = str(getattr(result, "result", "天气数据不可用"))
+            _store_scheduler_artifact(task, f"天气查询失败：{detail}", status="failed", error=detail)
+            return False
+        content = (getattr(result, "display", None) or result.result) if hasattr(result, 'result') else str(result)
+        if weather_brief:
+            from agent.tools.weather.weather import WeatherTool
+            content = WeatherTool.format_hourly_brief(
+                result.result,
+                location=str(weather_template["location"]),
+                today=forecast_today,
+                start_time=weather_template.get("start_time"),
+                end_time=weather_template.get("end_time"),
+            )
+        content = str(content)
         if result_prefix:
             content = f"{result_prefix}\n\n{content}"
 
@@ -1317,7 +1386,10 @@ def _execute_tool_call(task: dict, agent_bridge, agent_id: str = None) -> bool:
             _store_scheduler_artifact(task, "工具结果发送失败，详情请查看通知记录。", status="failed", error="delivery failed")
             return False
 
-        logger.info(f"[Scheduler] Task {task['id']} executed: sent tool result to {receiver}")
+        if task.get("_last_run_status") == "failed":
+            logger.warning(f"[Scheduler] Task {task['id']} completed, but {channel_type} delivery failed; Web fallback retained")
+        else:
+            logger.info(f"[Scheduler] Task {task['id']} executed: channel accepted tool result for {receiver}")
         return True
 
     except Exception as e:

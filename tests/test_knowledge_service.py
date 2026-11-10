@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 import os
 import sqlite3
 from pathlib import Path
@@ -100,7 +101,12 @@ def test_path_traversal_and_symlink_escape_are_rejected(tmp_path):
     svc, _ = service(tmp_path)
     outside = tmp_path / "outside"
     outside.mkdir()
-    (tmp_path / "knowledge/link").symlink_to(outside, target_is_directory=True)
+    try:
+        (tmp_path / "knowledge/link").symlink_to(outside, target_is_directory=True)
+    except OSError as error:
+        if getattr(error, "winerror", None) == 1314:
+            pytest.skip("Windows account lacks symbolic-link privilege")
+        raise
 
     assert svc.dispatch("create_category", {"path": "../bad"})["code"] == 403
     assert svc.dispatch("create_category", {"path": "link/bad"})["code"] == 403

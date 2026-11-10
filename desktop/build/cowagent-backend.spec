@@ -13,6 +13,7 @@ Build from the repo root:
     pyinstaller desktop/build/cowagent-backend.spec --noconfirm
 """
 import os
+import ssl
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 # Resolve the repo root from the spec's own location (desktop/build/ -> root),
@@ -52,9 +53,13 @@ hiddenimports = [
 # Agent tools and model providers are imported lazily in places; collect their
 # submodules so nothing is missed at runtime.
 hiddenimports += collect_submodules('agent.tools')
+hiddenimports += collect_submodules('agent.evaluation')
+hiddenimports += collect_submodules('agent.execution')
 hiddenimports += collect_submodules('models')
 hiddenimports += collect_submodules('voice')
 hiddenimports += collect_submodules('bridge')
+hiddenimports += collect_submodules('integrations.desktop_control')
+hiddenimports += collect_submodules('pywinauto')
 
 # Plugin framework + plugins. WebChannel -> ChatChannel imports
 # `from plugins import *`, and desktop mode loads plugins (in a background
@@ -145,8 +150,15 @@ datas = [
     (rp('channel', 'web', 'static'), 'channel/web/static'),
 ]
 
+# The bundled Codex Python runtime patches ssl.SSLContext to load this CA
+# exclusion file at construction time. Ship it when that runtime is used.
+_ssl_companion = os.path.join(os.path.dirname(ssl.__file__), 'codex-rejected-cas.pem')
+if os.path.isfile(_ssl_companion):
+    datas.append((_ssl_companion, '.'))
+
 # Some libraries (tiktoken encodings, etc.) ship data files.
 datas += collect_data_files('tiktoken_ext', include_py_files=False)
+datas += [(rp('agent', 'evaluation', 'cases.json'), 'agent/evaluation')]
 
 # python-docx / python-pptx bundle template files (default.docx / default.pptx,
 # content-type XML) inside their packages; they're loaded at import/parse time,

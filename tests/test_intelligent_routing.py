@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from agent.routing import route_request
 
@@ -44,3 +45,35 @@ def test_email_send_is_marked_for_risk_aware_execution():
     assert route.intent == "email"
     assert route.risk == "medium"
     assert "local_email" in route.tool_candidates
+
+
+def test_wecom_file_send_uses_desktop_workflow():
+    names = ("desktop_open_app", "desktop_wecom_search_contact", "vision",
+             "desktop_wecom_select_contact", "search_files",
+             "desktop_wecom_prepare_file", "desktop_wecom_send_staged_file")
+    with patch("integrations.desktop_control.session.desktop_session_status",
+               return_value={"available": True, "state": "active"}):
+        route = route_request(
+            "打开企业微信，给刘伟发送我桌面上的文件，文件名 2.png",
+            "gpt-6-sol",
+            tools=[_tool(name, server_name="cow-desktop-control") for name in names],
+        )
+    assert route.intent == "desktop"
+    assert "desktop_wecom_prepare_file" in route.tool_candidates
+    assert "desktop_wecom_send_staged_file" in route.tool_candidates
+
+
+def test_wecom_text_send_prefers_paste_workflow():
+    names = ("desktop_open_app", "desktop_wecom_search_contact", "vision",
+             "desktop_wecom_select_contact", "desktop_wecom_prepare_text",
+             "desktop_wecom_send_staged_text")
+    with patch("integrations.desktop_control.session.desktop_session_status",
+               return_value={"available": True, "state": "active"}):
+        route = route_request(
+            "打开企业微信，给刘伟发送消息：你好",
+            "gpt-6-sol",
+            tools=[_tool(name, server_name="cow-desktop-control") for name in names],
+        )
+    assert route.intent == "desktop"
+    assert "desktop_wecom_prepare_text" in route.tool_candidates
+    assert "desktop_wecom_send_staged_text" in route.tool_candidates

@@ -52,3 +52,28 @@ def test_failed_windows_command_returns_the_corrective_hint(monkeypatch, tmp_pat
     assert "FINDSTR: Cannot open -e" in result.result["output"]
     assert "Windows cmd.exe hint" in result.result["output"]
     assert "findstr /I" in result.result["output"]
+
+
+def test_windows_bash_prefers_workspace_python_over_store_alias(monkeypatch, tmp_path):
+    monkeypatch.setattr(Bash, "_IS_WIN", True)
+    runtime = tmp_path / ".venv" / "Scripts"
+    runtime.mkdir(parents=True)
+    (runtime / "python.exe").write_bytes(b"test runtime")
+    workspace = tmp_path / "work" / "cow-workspace"
+    workspace.mkdir(parents=True)
+    tool = Bash({"cwd": str(workspace)})
+    monkeypatch.setattr(
+        "agent.tools.bash.bash.subprocess.run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+    )
+    captured = {}
+
+    def run(command, timeout, env, dotenv_vars):
+        captured["path"] = env["PATH"]
+        return SimpleNamespace(returncode=0, stdout="Python 3.12\ngit version 2.56\n", stderr="")
+
+    monkeypatch.setattr(tool, "_run_streaming", run)
+    result = tool.execute({"command": "python --version && git --version", "timeout": 30})
+
+    assert result.status == "success"
+    assert captured["path"].split(";")[0] == str(runtime)

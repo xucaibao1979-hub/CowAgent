@@ -16,12 +16,17 @@ class DailyBriefingTests(unittest.TestCase):
         self.root.rmdir()
 
     def test_combines_news_github_and_website_reports(self):
-        (self.service.reports/'abcdef123456-20260825-080000.md').write_text('# 新闻日报\nAI 新闻',encoding='utf-8')
-        (self.service.reports/'github-task-20260825-090000.md').write_text('# GitHub\nRelease v2',encoding='utf-8')
-        (self.service.reports/'website-task-20260825-100000.md').write_text('# 网站\n价格变化',encoding='utf-8')
+        stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        (self.service.reports/f'abcdef123456-{stamp}.md').write_text('# 新闻日报\nAI 新闻',encoding='utf-8')
+        (self.service.reports/f'github-task-{stamp}.md').write_text('# GitHub\nRelease v2',encoding='utf-8')
+        (self.service.reports/f'website-task-{stamp}.md').write_text('# 网站\n价格变化',encoding='utf-8')
         task=self.service.save_task({'name':'综合日报','include_types':['news','github','website'],'lookback_hours':24})
         result=self.service.run(task['id'])
-        self.assertIn('新闻资讯',result['report']); self.assertIn('Release v2',result['report']); self.assertIn('价格变化',result['report'])
+        self.assertIn('新闻资讯',result['report'])
+        self.assertIn('GitHub 项目',result['report'])
+        self.assertIn('网站与竞品',result['report'])
+        self.assertIn('Release v2', str(result['sections']))
+        self.assertIn('价格变化', str(result['sections']))
         self.assertEqual(3,sum(len(x['reports']) for x in result['sections']))
 
     def test_source_and_lookback_validation(self):

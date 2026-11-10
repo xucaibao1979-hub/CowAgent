@@ -627,6 +627,12 @@ class Agent:
                     f"[Router] level={route.level} score={route.score} model={route.model} "
                     f"skills={route.skill_candidates or ['none']} reasons={route.reasons}"
                 )
+                try:
+                    from common.task_trace import emit as emit_task_trace
+                    emit_task_trace(None, "选择执行路径", "selected", intent=route.intent,
+                                    route=route.tool_candidates[0] if route.tool_candidates else "model")
+                except Exception:
+                    pass
                 if on_event:
                     on_event({
                         "type": "routing_decision",
@@ -695,6 +701,9 @@ class Agent:
                 "- 快答纪律：任务级别为 fast 且风险较低时，优先直接给结果；不要组织专家团、不要输出排查过程、不要重复解释工具选择。\n"
                 "- 执行纪律：用户让你做事时先尝试完成；只有缺配置、缺权限或高风险动作时，才在最后明确告诉用户需要补什么或请求审批。\n"
                 "- 先使用最匹配且风险最低的候选；候选不可用或失败时切换同类工具，不要重复调用同一失败路径。\n"
+                "- 涉及已登录网站的账户、账单或余额时，先用 desktop_browser_list_tabs 查找用户原有 Chrome/Edge 标签页，再用 desktop_browser_select_tab 和 desktop_browser_read_page 核实页面。browser 与 agent-browser 默认使用独立配置目录，不共享用户浏览器登录状态；不得因独立浏览器显示登录页就断言用户原标签页未登录。\n"
+                "- 网页故障恢复：目标标签页休眠时先 desktop_browser_wake_tab；首页显示登录时继续检查同站点已登录的控制台标签页，再用 desktop_browser_navigate_tab 在该标签页访问目标页面。页面未加载完就等待并重读；一个路径超时或跳转登录就换已授权的现有会话。只有所有可用会话均需用户亲自认证时才请求用户操作。完成后只报查到的结果，并准确区分现金余额、信用额度和可用额度。\n"
+                "- 浏览器会话纪律：desktop_browser_list_tabs 只列出用户浏览器窗口；如果没有目标网站标签，但用户 Chrome/Edge 已打开，调用 desktop_browser_open_tab 在该浏览器中新建标签并复用其登录状态。不要改用 CowAgent 独立浏览器的登录页来判断用户是否已登录，也不要覆盖无关标签页。\n"
                 "- Agent 名册只会注入已启用 Agent；停用的 Agent 不得主动推荐，除非用户明确点名要求恢复或配置。\n"
                 "- 技能候选已经过预筛：明确匹配时只读取最匹配的一个 SKILL.md；不匹配则不使用技能。"
             )

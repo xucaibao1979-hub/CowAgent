@@ -15,5 +15,5 @@ def test_update_rules_and_search_persistent_records(tmp_path):
 
     assert task["name"] == "新名称"
     assert task["rules"]["instruction"] == "按影响排序"
-    assert len(records) == 1
-    assert records[0]["title"] == "AI 行业日报"
+    assert records["total"] == 1
+    assert records["items"][0]["title"] == "AI 行业日报"

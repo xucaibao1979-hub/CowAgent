@@ -133,6 +133,8 @@ def _weather_request(message: str) -> Optional[dict]:
 def _file_request(message: str) -> Optional[dict]:
     text = str(message or "").strip()
     lowered = text.lower()
+    if re.search(r"(?:给|向).{1,40}(?:发送|发|传)", text) and not re.search(r"(?:发送|发|传)给我", text):
+        return None
     if not text or len(text) > 160 or not any(word in lowered for word in _FILE_WORDS):
         return None
     if not any(word in text for word in ("找", "查", "搜索", "在哪里", "发给我", "读取", "打开")):
@@ -407,6 +409,12 @@ def _email_request(message: str) -> Optional[dict]:
         args["date_from"], args["date_to"] = explicit_range
         args.pop("date", None)
         args["max_messages"] = max(maximum, 50)
+    elif any(x in text for x in ("上周", "上个星期", "上一周", "上星期")):
+        this_monday = date.today() - timedelta(days=date.today().weekday())
+        args["date_from"] = (this_monday - timedelta(days=7)).isoformat()
+        args["date_to"] = (this_monday - timedelta(days=1)).isoformat()
+        args.pop("date", None)
+        args["max_messages"] = max(maximum, 80)
     elif any(x in text for x in ("这两天", "最近两天", "近两天", "两天", "2天")):
         args["date_from"] = (date.today() - timedelta(days=1)).isoformat()
         args["date_to"] = date.today().isoformat()
@@ -479,11 +487,14 @@ def _try_email_query(message: str) -> Optional[str]:
         if settings.get("imap_host") and settings.get("username") and settings.get("password"):
             from pathlib import Path
             from plugins.intelligence_center.email_secretary import EmailSecretaryService
-            service = EmailSecretaryService(Path(get_data_root()) / "intelligence_center", settings)
+            service = EmailSecretaryService(Path(get_data_root()) / "intelligence_center", {**settings, "source_type": "imap"})
             task = {
+                "source_type": "imap",
                 "folder": args["folder"],
                 "unread_only": args["unread_only"],
                 "max_messages": args["max_messages"],
+                "date_from": args.get("date_from"),
+                "date_to": args.get("date_to"),
             }
             messages = service._receive(task)
             messages = _filter_email_messages_by_date(messages, args)
@@ -531,7 +542,10 @@ def _save_email_query_artifact(report: str, source: str, query: str, messages: l
 
 def _format_email_messages(source: str, messages: list, args: dict) -> str:
     if not messages:
-        return f"{source}今天暂未找到符合条件的{'未读' if args.get('unread_only') else ''}邮件。"
+        period = args.get("date") or f"{args.get('date_from')}..{args.get('date_to')}"
+        if period == "today":
+            period = "今天"
+        return f"{source}在{period}暂未找到符合条件的{'未读' if args.get('unread_only') else ''}邮件。"
     try:
         from agent.tools.local_email.local_email import LocalEmailTool
         normalized = []
@@ -807,22 +821,35 @@ def _read_thunderbird_fast(args: dict) -> dict:
 
 
 def _filter_email_messages_by_date(messages: list, args: dict) -> list:
-    if args.get("date") != "today":
+    start_raw = args.get("date_from") or args.get("date")
+    end_raw = args.get("date_to") or start_raw
+    if not start_raw:
         return messages
     from email.utils import parsedate_to_datetime
-    today = date.today()
+    try:
+        start = date.today() if start_raw == "today" else date.fromisoformat(str(start_raw))
+        end = date.today() if end_raw == "today" else date.fromisoformat(str(end_raw))
+    except ValueError:
+        return []
+    if start > end:
+        start, end = end, start
     output = []
     for item in messages or []:
         raw = str(item.get("date") or "").strip()
         if not raw:
-            output.append(item)
             continue
         try:
-            dt = parsedate_to_datetime(raw)
-            if dt and dt.astimezone().date() == today:
+            try:
+                dt = datetime.fromisoformat(raw)
+            except ValueError:
+                dt = parsedate_to_datetime(raw)
+            if dt is None:
+                continue
+            message_date = dt.astimezone().date() if dt.tzinfo else dt.date()
+            if start <= message_date <= end:
                 output.append(item)
         except Exception:
-            output.append(item)
+            continue
     return output
 
 

@@ -133,7 +133,7 @@ class SchedulerService:
             if self.running:
                 logger.warning("[Scheduler] Service already running")
                 return
-            
+            self._recover_interrupted_runs()
             self.running = True
             self.thread = threading.Thread(target=self._run_loop, daemon=True)
             self.thread.start()
@@ -345,6 +345,7 @@ class SchedulerService:
             try:
                 now = datetime.now()
                 task["_run_id"] = run_id
+                task["_run_mode"] = "manual"
                 logger.info(f"[Scheduler] Manually executing task: {task_id} - {task.get('name', '')}")
                 valid_instance, guard_reason = self._runtime_instance_guard()
                 if not valid_instance:
@@ -408,6 +409,7 @@ class SchedulerService:
                 )
             finally:
                 task.pop("_run_id", None)
+                task.pop("_run_mode", None)
                 self._release_task(task_id)
 
         threading.Thread(
@@ -420,6 +422,49 @@ class SchedulerService:
     def _scheduler_base_dir(self) -> str:
         base_dir = os.path.dirname(getattr(self.task_store, "store_path", "") or "")
         return base_dir or os.getcwd()
+
+    def _run_journal(self):
+        from agent.execution.run_journal import RunJournal
+        return RunJournal(os.path.join(self._scheduler_base_dir(), "run_checkpoints"))
+
+    def _recover_interrupted_runs(self) -> None:
+        """Resume only a reminder known to have stopped before the send step."""
+        try:
+            journal = self._run_journal()
+            from common.task_trace import read_events
+            from config import get_data_root
+            trace_by_run = {}
+            for event in read_events(os.path.join(get_data_root(), "intelligence_center")):
+                trace_by_run.setdefault(str(event.get("id") or ""), []).append(event)
+            for checkpoint in journal.interrupted():
+                try:
+                    run_id = checkpoint["run_id"]
+                    plan = journal.recovery_plan(checkpoint, trace_by_run.get(run_id, []))
+                    task = self.task_store.get_task(checkpoint.get("task_id") or "")
+                    if not task or checkpoint.get("mode") != "scheduled":
+                        journal.resolve_interrupted(run_id, "interrupted_needs_review", "任务已移除或手动执行中断")
+                        continue
+                    if plan == "safe_retry":
+                        guard_raw = str(checkpoint.get("guard_path") or "")
+                        guard = os.path.abspath(guard_raw) if guard_raw else ""
+                        guard_root = os.path.abspath(os.path.join(self._scheduler_base_dir(), "run_windows"))
+                        if guard and os.path.commonpath([guard, guard_root]) == guard_root and os.path.isfile(guard):
+                            os.remove(guard)
+                        self.task_store.update_task(task["id"], {"next_run_at": datetime.now().isoformat(),
+                                                                   "last_run_status": "recovery_scheduled"})
+                        journal.resolve_interrupted(run_id, "recovery_scheduled", "发送前中断，已安排重新执行")
+                    else:
+                        next_run = self._calculate_next_run(task, datetime.now())
+                        updates = {"last_run_status": "interrupted_unverified" if plan == "needs_verification" else "interrupted_needs_review",
+                                   "last_result_summary": "上次执行中断，发送状态待核对；本次不会自动重发"}
+                        if next_run:
+                            updates["next_run_at"] = next_run.isoformat()
+                        self.task_store.update_task(task["id"], updates)
+                        journal.resolve_interrupted(run_id, updates["last_run_status"], updates["last_result_summary"])
+                except Exception as error:
+                    logger.warning(f"[Scheduler] Could not recover checkpoint {checkpoint.get('run_id')}: {error}")
+        except Exception as error:
+            logger.warning(f"[Scheduler] Interrupted run recovery skipped: {error}")
 
     def _stale_scheduler_lock_files(self, max_age_seconds: int = 1800) -> list:
         base_dir = os.path.abspath(self._scheduler_base_dir())
@@ -840,18 +885,45 @@ class SchedulerService:
                     f"[Scheduler] Task {task['id']} is overdue by {int(time_diff)}s, "
                     f"skipping and scheduling next run"
                 )
-
+                summary = (
+                    f"原定 {next_run:%Y-%m-%d %H:%M} 执行；电脑休眠或本地服务未运行，"
+                    f"恢复时已晚 {int(time_diff // 60)} 分钟，超过 10 分钟补发窗口，未发送过期内容。"
+                )
+                updates = {
+                    "last_run_at": now.isoformat(),
+                    "last_run_status": "missed",
+                    "last_result_summary": summary,
+                    "last_error": summary,
+                    "last_error_at": now.isoformat(),
+                    "last_delivery_summary": "未发送：错过计划时间",
+                }
                 if schedule_type == "once":
-                    self.task_store.delete_task(task['id'])
-                    logger.info(f"[Scheduler] One-time task {task['id']} expired, removed")
-                    return False
-
-                next_next_run = self._calculate_next_run(task, now)
-                if next_next_run:
-                    self.task_store.update_task(task['id'], {
-                        "next_run_at": next_next_run.isoformat()
-                    })
-                    logger.info(f"[Scheduler] Rescheduled task {task['id']} to {next_next_run}")
+                    updates.update({"enabled": False, "next_run_at": None})
+                else:
+                    next_next_run = self._calculate_next_run(task, now)
+                    updates["next_run_at"] = next_next_run.isoformat() if next_next_run else None
+                    if next_next_run:
+                        logger.info(f"[Scheduler] Rescheduled task {task['id']} to {next_next_run}")
+                self.task_store.update_task(
+                    task['id'],
+                    self._append_run_history(task, updates, "scheduled", "", next_run, now),
+                )
+                if next_run.date() == now.date():
+                    try:
+                        from config import get_data_root
+                        from intelligence_center.inbox_service import InboxStore
+                        InboxStore(os.path.join(get_data_root(), "intelligence_center")).upsert(
+                            source_id=f"scheduler-missed:{task['id']}:{next_run:%Y%m%d%H%M}",
+                            kind="automation_result",
+                            title=f"{task.get('name') or '定时任务'} · 错过执行",
+                            summary=summary,
+                            status="warning",
+                            target={"view": "automation", "tab": "records", "task_id": task['id']},
+                            payload={"task_id": task['id'], "scheduled_at": next_run.isoformat()},
+                            unread=True,
+                        )
+                    except Exception as notify_error:
+                        logger.warning(f"[Scheduler] Missed-run notice failed: {notify_error}")
                 return False
 
             return now >= next_run
@@ -924,10 +996,26 @@ class SchedulerService:
         loop iteration retries). Callback may return None for legacy
         behaviour, treated as success.
         """
+        run_id = str(task.get("_run_id") or f"scheduled-{uuid.uuid4().hex[:12]}")
+        task["_run_id"] = run_id
+        journal = None
+        try:
+            journal = self._run_journal()
+            task["_run_journal_root"] = str(journal.root)
+            journal.begin(run_id, task.get("id") or "", (task.get("action") or {}).get("type") or "",
+                          mode=task.get("_run_mode") or "scheduled",
+                          guard_path=task.get("_due_window_guard_path") or "")
+        except Exception as error:
+            logger.warning(f"[Scheduler] Run checkpoint skipped: {error}")
         try:
             result = self.execute_callback(task)
-            return False if result is False else True
+            accepted = result is not False
+            if journal:
+                journal.finish(run_id, accepted, "执行回调成功；请查看通知接口状态" if accepted else "执行回调返回失败")
+            return accepted
         except Exception as e:
+            if journal:
+                journal.finish(run_id, False, str(e)[:300])
             logger.error(f"[Scheduler] Error executing task {task['id']}: {e}")
             self.task_store.update_task(task['id'], {
                 "last_run_at": datetime.now().isoformat(),
@@ -937,3 +1025,5 @@ class SchedulerService:
                 "last_error_at": datetime.now().isoformat()
             })
             return False
+        finally:
+            task.pop("_run_journal_root", None)

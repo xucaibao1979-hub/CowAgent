@@ -533,7 +533,10 @@ class SearchFiles(BaseTool):
                     rows.append({"file": self._rel(head, opts.root), "count": int(tail)})
                 continue
             # content mode: path:line:content
-            first = line.find(":")
+            # Windows absolute paths start with a drive-letter colon. Skip it
+            # before locating rg's path:line:content delimiters.
+            prefix = 2 if _IS_WIN and len(line) >= 2 and line[0].isalpha() and line[1] == ":" else 0
+            first = line.find(":", prefix)
             second = line.find(":", first + 1)
             if first == -1 or second == -1:
                 continue

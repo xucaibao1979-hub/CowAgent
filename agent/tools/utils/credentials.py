@@ -53,5 +53,13 @@ def is_credential_path(absolute_path: str) -> bool:
             return True
 
     # 2. The credential file itself, following symlinks on both sides.
-    env_real = os.path.realpath(expand_path("~/.cow/.env")).replace(os.sep, "/")
-    return env_real in candidates
+    protected = {os.path.realpath(expand_path("~/.cow/.env")).replace(os.sep, "/")}
+    # Windows expands ~ from USERPROFILE even when a process has a different
+    # HOME (test harnesses, service accounts, portable installs). Protect both
+    # locations and the explicitly configured CowAgent data directory.
+    for home in (os.environ.get("HOME"), os.environ.get("USERPROFILE")):
+        if home:
+            protected.add(os.path.realpath(os.path.join(home, ".cow", ".env")).replace(os.sep, "/"))
+    if os.environ.get("COW_DATA_DIR"):
+        protected.add(os.path.realpath(os.path.join(os.environ["COW_DATA_DIR"], ".env")).replace(os.sep, "/"))
+    return bool(protected & candidates)

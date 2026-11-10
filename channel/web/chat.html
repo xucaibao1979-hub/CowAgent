@@ -42,7 +42,7 @@
         }
     }
     </script>
-    <link rel="stylesheet" href="assets/css/console.css?v=20260828-4">
+    <link rel="stylesheet" href="assets/css/console.css?v=20261105-1">
     <!-- Apply theme/lang before first paint to avoid flash of unstyled content.
          This runs synchronously in <head> so the correct class is on <html>
          before any CSS or body rendering occurs. -->
@@ -124,14 +124,24 @@
             <!-- Logo -->
             <div id="sidebar-header" class="flex items-center gap-2 px-3 h-14 border-b border-white/10 flex-shrink-0">
                 <div id="sidebar-brand-wrap">
-                    <span id="sidebar-brand" class="text-white font-bold text-lg tracking-wide">Agent</span>
-                    <i class="fas fa-chevron-down text-[10px] text-neutral-500"></i>
+                    <div class="sidebar-brand-copy"><span id="sidebar-brand" class="text-white font-bold text-lg tracking-wide">Agent</span><small>智能体工作台</small></div>
                 </div>
                 <div id="sidebar-top-actions" class="flex items-center gap-1">
-                    <button onclick="toggleSidebarCompact()" title="收起侧边栏" class="hidden lg:flex w-8 h-8 items-center justify-center rounded-lg hover:bg-white/10 hover:text-white"><i id="sidebar-collapse-icon" class="fas fa-table-columns"></i></button>
+                    <button onclick="toggleSidebarCompact()" title="收起侧边栏" aria-label="收起侧边栏" class="hidden lg:flex w-8 h-8 items-center justify-center rounded-lg hover:bg-white/10 hover:text-white"><svg id="sidebar-collapse-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2.5"/><path d="M7.5 3v14"/><path d="m12 8-2 2 2 2"/></svg></button>
                     <button id="sidebar-search-button" onclick="openGlobalSearch()" title="搜索" class="sidebar-top-action">
                         <i class="fas fa-search"></i><span id="sidebar-search-label" data-i18n="search">搜索</span>
                     </button>
+                    <button id="scheduler-footer-shortcut" onclick="navigateTo('tasks');setSchedulerTaskFilter('all');loadTasksView()" class="sidebar-top-action" title="定时任务" aria-label="定时任务"><svg class="owner-scheduler-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.3 3.4 2.8 5.9M18.7 3.4l2.5 2.5M6 18.3l-1.8 2M18 18.3l1.8 2"/><circle cx="12" cy="11.8" r="8"/><path d="m9 11.8 2 2 4-4.1"/></svg></button>
+                    <div id="notification-center" class="relative">
+                        <button id="notification-toggle" onclick="toggleNotificationCenter(event)" class="sidebar-top-action" title="消息提醒" aria-label="消息提醒">
+                            <i class="far fa-bell owner-bell-icon" aria-hidden="true"></i>
+                            <span id="notification-badge" class="hidden owner-notification-badge">0</span>
+                        </button>
+                        <div id="notification-menu" class="hidden absolute w-[360px] max-w-[86vw] rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#202020] shadow-2xl z-50 overflow-hidden">
+                            <div class="flex justify-between items-center px-4 py-3 border-b border-slate-100 dark:border-white/10"><div><b class="text-sm">消息提醒</b></div><div class="flex items-center gap-1"><button onclick="markAllInboxRead(event)" class="px-2 py-1 rounded-lg text-[11px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10">全部已读</button><button onclick="openInboxHistory(event)" class="px-2 py-1 rounded-lg text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-500/10">历史消息</button><button onclick="loadNotificationCenter()" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10"><i class="fas fa-rotate text-xs"></i></button></div></div>
+                            <div id="notification-list" class="max-h-[420px] overflow-y-auto"></div>
+                        </div>
+                    </div>
                     <button id="sidebar-new-chat" onclick="newChat()" title="新建对话" class="sidebar-top-action sidebar-new-chat">
                         <i class="fas fa-pen-to-square item-icon"></i><span data-i18n="tip_new_chat">新建</span>
                     </button>
@@ -140,45 +150,37 @@
 
             <!-- Navigation -->
             <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+                <button type="button" class="sidebar-create-task" onclick="newChat()"><i class="far fa-square-plus item-icon"></i><span>新建对话</span></button>
                 <a class="sidebar-item active flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]" data-view="mission-control">
                     <i class="fas fa-gauge-high item-icon text-cyan-400 text-xs w-5 text-center"></i><span data-i18n="menu_mission_control">仪表盘</span>
                 </a>
                 <!-- Chat Group -->
-                <div class="menu-group open" data-group="chat">
+                <div class="menu-group" data-group="chat">
                     <button class="w-full flex items-center gap-2 px-3 py-2 text-[14px] font-semibold text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
                         <i class="fas fa-chevron-right text-[10px] chevron"></i>
                         <i class="fas fa-briefcase text-sky-400 text-xs w-4 text-center"></i>
                         <span data-i18n="sidebar_daily_collaboration">日常协作</span>
                     </button>
                     <div class="menu-group-items pl-2">
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
-                           data-view="chat">
-                            <i class="fas fa-clock-rotate-left item-icon text-sky-400 text-xs w-5 text-center"></i>
-                            <span data-i18n="session_history">会话内容</span>
+                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]" data-view="common-functions">
+                            <i class="fas fa-toolbox item-icon text-cyan-400 text-xs w-5 text-center"></i><span data-i18n="menu_common_functions">常用功能</span>
                         </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]" data-view="projects" onclick="toggleSidebarQuickList('sidebar-project-list',this)">
-                            <i class="fas fa-folder-tree item-icon text-violet-400 text-xs w-5 text-center"></i><span data-i18n="sidebar_project_space">项目空间</span><button onclick="event.stopPropagation();toggleSidebarQuickList('sidebar-project-list',this.closest('.sidebar-item'))" class="ml-auto w-6 h-6 rounded hover:bg-white/10"><i class="fas fa-chevron-down text-[10px]"></i></button>
-                        </a>
-                        <div id="sidebar-project-list" class="sidebar-quick-list"></div>
                         <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]" data-view="weixin-assistant">
                             <i class="fab fa-weixin item-icon text-emerald-400 text-sm w-5 text-center"></i><span data-i18n="sidebar_weixin_assistant">助理小爱</span>
-                        </a>
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]" data-view="artifacts">
-                            <i class="fas fa-box-archive item-icon text-amber-400 text-xs w-5 text-center"></i><span data-i18n="menu_artifacts_delivery">产物/交付物</span>
                         </a>
                     </div>
                 </div>
 
                 <!-- Management Group -->
-                <div class="menu-group open" data-group="manage">
+                <div class="menu-group" data-group="manage">
                     <button class="w-full flex items-center gap-2 px-3 py-2 text-[14px] font-semibold text-neutral-500 hover:text-neutral-300 cursor-pointer transition-colors duration-150">
                         <i class="fas fa-chevron-right text-[10px] chevron"></i>
                         <i class="fas fa-toolbox text-fuchsia-400 text-xs w-4 text-center"></i>
                         <span data-i18n="sidebar_skills_management">技能与管理</span>
                     </button>
                     <div class="menu-group-items pl-2">
-                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]" data-view="common-functions">
-                            <i class="fas fa-toolbox item-icon text-cyan-400 text-xs w-5 text-center"></i><span data-i18n="menu_common_functions">常用功能</span>
+                        <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]" data-view="artifacts">
+                            <i class="fas fa-box-archive item-icon text-amber-400 text-xs w-5 text-center"></i><span data-i18n="menu_artifacts_delivery">产物/交付物</span>
                         </a>
                         <a class="sidebar-item flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-all duration-150 hover:bg-white/5 hover:text-neutral-200 text-[14px]"
                            data-view="skills">
@@ -199,6 +201,13 @@
                     </div>
                 </div>
 
+                <div class="sidebar-space-header">
+                    <button type="button" class="sidebar-space-heading" onclick="navigateTo('projects')" title="管理项目空间">空间 <span id="sidebar-space-count">(0)</span><i class="fas fa-chevron-down sidebar-space-header-caret" aria-hidden="true"></i></button>
+                    <span class="sidebar-space-actions"><button type="button" onclick="showArchivedSpaceTasks()" title="已归档任务" aria-label="已归档任务"><i class="fas fa-box-archive"></i></button><button type="button" class="sidebar-space-collapse-all" onclick="toggleAllSidebarSpaces()" title="折叠所有空间" aria-label="折叠所有空间"><i class="fas fa-compress-arrows-alt"></i></button><button type="button" onclick="openProjectCreator()" title="新建工作空间" aria-label="新建工作空间"><i class="far fa-square-plus"></i></button></span>
+                </div>
+                <div id="sidebar-project-list" class="sidebar-project-tree"></div>
+                <div id="sidebar-task-batch-bar" class="sidebar-task-batch-bar hidden"></div>
+
             </nav>
 
             <!-- Sidebar Footer -->
@@ -210,17 +219,7 @@
                             <span id="owner-display-name" class="owner-role">快乐随缘</span>
                         </span>
                     </button>
-                    <button id="scheduler-footer-shortcut" onclick="navigateTo('tasks');setSchedulerTaskFilter('all');loadTasksView()" class="owner-footer-icon" title="定时任务" aria-label="定时任务"><svg class="owner-scheduler-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.3 3.4 2.8 5.9M18.7 3.4l2.5 2.5M6 18.3l-1.8 2M18 18.3l1.8 2"/><circle cx="12" cy="11.8" r="8"/><path d="m9 11.8 2 2 4-4.1"/></svg></button>
-                    <div id="notification-center" class="relative">
-                        <button id="notification-toggle" onclick="toggleNotificationCenter(event)" class="owner-footer-icon" title="消息提醒" aria-label="消息提醒">
-                            <i class="far fa-bell owner-bell-icon" aria-hidden="true"></i>
-                            <span id="notification-badge" class="hidden owner-notification-badge">0</span>
-                        </button>
-                        <div id="notification-menu" class="hidden absolute left-0 bottom-full mb-2 w-[360px] max-w-[86vw] rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#202020] shadow-2xl z-50 overflow-hidden">
-                            <div class="flex justify-between items-center px-4 py-3 border-b border-slate-100 dark:border-white/10"><div><b class="text-sm">消息提醒</b></div><div class="flex items-center gap-1"><button onclick="markAllInboxRead(event)" class="px-2 py-1 rounded-lg text-[11px] text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10">全部已读</button><button onclick="openInboxHistory(event)" class="px-2 py-1 rounded-lg text-[11px] text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-500/10">历史消息</button><button onclick="loadNotificationCenter()" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10"><i class="fas fa-rotate text-xs"></i></button></div></div>
-                            <div id="notification-list" class="max-h-[420px] overflow-y-auto"></div>
-                        </div>
-                    </div>
+
                 </div>
                 <div id="owner-menu" class="owner-menu hidden">
                     <div class="owner-menu-title">快捷设置</div>
@@ -423,18 +422,18 @@
                                           class="composer-textarea"
                                           rows="1"
                                           data-i18n-placeholder="input_placeholder"
-                                          placeholder="输入消息..."></textarea>
+                                          placeholder="今天帮你做些什么？@ 添加上下文，调用技能与指令"></textarea>
+                                <div id="composer-context-chips" class="composer-context-chips hidden" aria-label="已添加的会话能力"></div>
                                 <div id="quick-tags-bar" class="hidden flex flex-wrap gap-2 px-3 pb-2"></div>
 
                                 <div class="composer-toolbar">
                                     <div class="composer-group">
-                                        <button id="composer-more-toggle" type="button" class="composer-icon-btn" onclick="toggleComposerMoreMenu(event)" title="更多功能" aria-label="更多功能" aria-expanded="false"><i class="fas fa-plus"></i></button>
-                                        <button id="attach-btn" type="button" class="composer-icon-btn" onclick="toggleAttachMenu(event)" title="添加附件" aria-label="添加附件"><i class="fas fa-paperclip"></i></button>
-                                        <button id="permission-selector-btn" type="button" class="composer-compact-select" onclick="togglePermissionSelector(event)" title="访问权限"><i id="permission-selector-icon" class="fas fa-shield-halved"></i><span id="permission-selector-label" data-i18n="perm_full_access">全部可访问</span><i class="fas fa-chevron-down text-[10px]"></i></button>
+                                        <button id="composer-more-toggle" type="button" class="composer-icon-btn composer-add-btn" onclick="toggleComposerMoreMenu(event)" title="添加文件、专家、技能或连接器" aria-label="添加文件、专家、技能或连接器" aria-expanded="false"><i class="fas fa-plus"></i></button>
                                     </div>
 
                                     <div class="composer-group composer-group-end">
                                         <button id="optimize-btn" type="button" class="composer-icon-btn" title="优化输入" aria-label="优化输入"><i class="fas fa-wand-magic-sparkles"></i></button>
+                                        <button id="model-selector-btn" type="button" class="composer-model-btn" onclick="toggleModelSelector(event)" title="选择本次会话模型"><i class="fas fa-microchip"></i><span id="model-selector-label">模型</span><i class="fas fa-chevron-down text-[9px]"></i></button>
                                         <button id="mic-btn" type="button" class="composer-icon-btn text-slate-400"
                                                 data-tooltip="点击录音 / 再按一次结束">
                                             <i class="fas fa-microphone text-sm"></i>
@@ -453,9 +452,16 @@
                                 </div>
 
                                 <div id="composer-more-menu" class="composer-more-menu hidden" role="menu" aria-label="更多功能">
-                                    <button id="clear-context-btn" type="button" class="composer-more-item" onclick="closeComposerMoreMenu();clearContext()"><i class="fas fa-trash-can"></i>清除上下文</button>
-                                    <button id="workspace-selector-btn" type="button" class="composer-more-item" onclick="closeComposerMoreMenu();toggleWorkspaceSelector(event)"><i class="fas fa-folder-open"></i><span id="workspace-selector-label" data-i18n="ws_default_workspace">默认空间</span></button>
-                                    <button id="model-selector-btn" type="button" class="composer-more-item" onclick="closeComposerMoreMenu();toggleModelSelector(event)"><i class="fas fa-microchip"></i><span id="model-selector-label">模型</span></button>
+                                    <div id="composer-add-main">
+                                        <div class="composer-menu-title">添加到会话</div>
+                                        <button type="button" class="composer-more-item" onclick="closeComposerMoreMenu();triggerFileUpload()"><i class="fas fa-file-arrow-up"></i><span>文件</span></button>
+                                        <button type="button" class="composer-more-item" onclick="openComposerCapabilityPicker('expert')"><i class="fas fa-user-tie"></i><span>专家</span></button>
+                                        <button type="button" class="composer-more-item" onclick="openComposerCapabilityPicker('skill')"><i class="fas fa-wand-magic-sparkles"></i><span>技能</span></button>
+                                        <button type="button" class="composer-more-item" onclick="openComposerCapabilityPicker('connector')"><i class="fas fa-plug"></i><span>连接器</span></button>
+                                        <div class="composer-menu-divider"></div>
+                                        <button id="clear-context-btn" type="button" class="composer-more-item" onclick="closeComposerMoreMenu();clearContext()"><i class="fas fa-trash-can"></i><span>清除上下文</span></button>
+                                    </div>
+                                    <div id="composer-add-picker" class="hidden"></div>
                                 </div>
 
                                 <input type="file" id="file-input" class="hidden" multiple
@@ -476,6 +482,10 @@
                                 <div id="workspace-selector-menu" class="workspace-selector-menu hidden"></div>
                                 <div id="permission-selector-menu" class="composer-menu hidden"></div>
                                 <div id="model-selector-menu" class="composer-menu composer-menu-wide hidden"></div>
+                            </div>
+                            <div class="composer-footer">
+                                <button id="workspace-selector-btn" type="button" class="composer-footer-btn" onclick="toggleWorkspaceSelector(event)" title="选择工作空间"><i class="far fa-folder"></i><span id="workspace-selector-label" data-i18n="ws_default_workspace">默认空间</span><i class="fas fa-chevron-down text-[9px]"></i></button>
+                                <button id="permission-selector-btn" type="button" class="composer-footer-btn composer-permission-btn" onclick="togglePermissionSelector(event)" title="访问权限"><i id="permission-selector-icon" class="fas fa-shield-halved"></i><span id="permission-selector-label" data-i18n="perm_full_access">全部可访问</span><i class="fas fa-chevron-down text-[9px]"></i></button>
                             </div>
                         </div>
                     </div>
@@ -1118,6 +1128,7 @@
                                 <div id="common-function-grid" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
                                     <button data-common-function="network-search" data-category="information" data-search="网络搜索 agent 搜索 阅读 去重 总结 来源" onclick="openCommonFunction('network-search')" class="common-function-card group rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] p-5 text-left hover:border-blue-300 hover:shadow-sm transition"><div class="flex items-start justify-between"><div class="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 flex items-center justify-center"><i class="fas fa-magnifying-glass-chart"></i></div><span class="rounded-full bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-600" data-i18n="status_enabled">已启用</span></div><h3 class="font-semibold mt-4" data-i18n="network_search_agent_title">网络搜索 Agent</h3><p class="text-xs leading-5 text-slate-500 mt-2" data-i18n="network_search_agent_desc">搜索、阅读、相关度判断、去重、总结并保留原文来源</p><div class="mt-4 flex items-center justify-between"><span class="text-[10px] text-slate-400" data-i18n="common_network_category">信息获取 · 联网能力</span><span class="text-xs text-blue-600 opacity-0 group-hover:opacity-100"><span data-i18n="open">打开</span> <i class="fas fa-arrow-right ml-1"></i></span></div></button>
                                     <button data-common-function="tech-briefing" data-category="information" data-search="科技热点 简报 国内 国际 AI 大模型 芯片 半导体 云计算 算力 OpenAI 华为 小米 腾讯 阿里 字节 NVIDIA Apple Meta 定时任务" onclick="openCommonFunction('tech-briefing')" class="common-function-card group rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] p-5 text-left hover:border-cyan-300 hover:shadow-sm transition"><div class="flex items-start justify-between"><div class="w-11 h-11 rounded-xl bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 flex items-center justify-center"><i class="fas fa-newspaper"></i></div><span class="rounded-full bg-cyan-50 dark:bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-600">一键模板</span></div><h3 class="font-semibold mt-4">每日国内外科技热点简报</h3><p class="text-xs leading-5 text-slate-500 mt-2">默认每天 09:00 搜索最近24小时科技新闻，按国内/国际/今日关注输出。</p><div class="mt-4 flex items-center justify-between"><span class="text-[10px] text-slate-400">信息获取 · 定时简报</span><span class="text-xs text-cyan-600 opacity-0 group-hover:opacity-100">打开 <i class="fas fa-arrow-right ml-1"></i></span></div></button>
+                                    <button data-common-function="weather-reminder" data-category="information" data-search="天气提醒 天气预报 定时任务 地区 气温 降雨 关注时段 发送时间 微信" onclick="openCommonFunction('weather-reminder')" class="common-function-card group rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] p-5 text-left hover:border-sky-300 hover:shadow-sm transition"><div class="flex items-start justify-between"><div class="w-11 h-11 rounded-xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 flex items-center justify-center"><i class="fas fa-cloud-sun-rain"></i></div><span class="rounded-full bg-sky-50 dark:bg-sky-500/10 px-2 py-1 text-[10px] text-sky-600">可定时</span></div><h3 class="font-semibold mt-4">天气提醒</h3><p class="text-xs leading-5 text-slate-500 mt-2">自选地区、关注时段和发送时间，定时推送一句话天气与出行提醒。</p><div class="mt-4 flex items-center justify-between"><span class="text-[10px] text-slate-400">信息获取 · 天气通知</span><span class="text-xs text-sky-600 opacity-0 group-hover:opacity-100">配置 <i class="fas fa-arrow-right ml-1"></i></span></div></button>
                                     <button data-common-function="deep-research" data-category="information" data-search="个人研究 Agent 深度研究 市场调研 竞品分析 决策报告 机会洞察 manus wide research" onclick="openCommonFunction('deep-research')" class="common-function-card group rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] p-5 text-left hover:border-indigo-300 hover:shadow-sm transition"><div class="flex items-start justify-between"><div class="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 flex items-center justify-center"><i class="fas fa-microscope"></i></div><span class="rounded-full bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-600">已启用</span></div><h3 class="font-semibold mt-4">个人研究 Agent</h3><p class="text-xs leading-5 text-slate-500 mt-2">一句话拆解研究问题，生成提纲、联网研究并沉淀报告。</p><div class="mt-4 flex items-center justify-between"><span class="text-[10px] text-slate-400">信息获取 · 决策研究</span><span class="text-xs text-indigo-600 opacity-0 group-hover:opacity-100">打开 <i class="fas fa-arrow-right ml-1"></i></span></div></button>
                                     <button data-common-function="agent-reach" data-category="information" data-search="agent reach 互联网能力 web rss github youtube bilibili v2ex twitter reddit 小红书 linkedin doctor" onclick="openCommonFunction('agent-reach')" class="common-function-card group rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] p-5 text-left hover:border-cyan-300 hover:shadow-sm transition"><div class="flex items-start justify-between"><div class="w-11 h-11 rounded-xl bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 flex items-center justify-center"><i class="fas fa-satellite"></i></div><span class="rounded-full bg-blue-50 dark:bg-blue-500/10 px-2 py-1 text-[10px] text-blue-600">互联网底座</span></div><h3 class="font-semibold mt-4">Agent-Reach 互联网能力</h3><p class="text-xs leading-5 text-slate-500 mt-2">统一接入网页、RSS、GitHub、YouTube、B站和社媒来源，支持 doctor 体检。</p><div class="mt-4 flex items-center justify-between"><span class="text-[10px] text-slate-400">信息获取 · 多平台来源</span><span class="text-xs text-cyan-600 opacity-0 group-hover:opacity-100">打开 <i class="fas fa-arrow-right ml-1"></i></span></div></button>
                                     <button data-common-function="quick-learning" data-category="information" data-search="快速学习 Agent 公众号文章 网页内容提取 总结 学习笔记 知识卡片" onclick="openCommonFunction('quick-learning')" class="common-function-card group rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] p-5 text-left hover:border-lime-300 hover:shadow-sm transition"><div class="flex items-start justify-between"><div class="w-11 h-11 rounded-xl bg-lime-50 dark:bg-lime-500/10 text-lime-600 flex items-center justify-center"><i class="fas fa-book-open-reader"></i></div><span class="rounded-full bg-lime-50 dark:bg-lime-500/10 px-2 py-1 text-[10px] text-lime-600">学习助手</span></div><h3 class="font-semibold mt-4">快速学习 Agent</h3><p class="text-xs leading-5 text-slate-500 mt-2">粘贴公众号或网页链接，提炼核心信息、学习价值和可复用方法。</p><div class="mt-4 flex items-center justify-between"><span class="text-[10px] text-slate-400">信息获取 · 学习压缩</span><span class="text-xs text-lime-600 opacity-0 group-hover:opacity-100">打开 <i class="fas fa-arrow-right ml-1"></i></span></div></button>
@@ -1217,6 +1228,10 @@
                                     </div>
                                     <aside class="hidden"><div id="network-search-output-preview"></div><div id="network-search-history"></div></aside>
                                 </div>
+                            </section>
+                            <section id="common-function-weather-reminder" class="hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] overflow-hidden">
+                                <div class="p-5 lg:p-6 border-b border-slate-100 dark:border-white/5 flex items-start gap-4"><button onclick="showCommonFunctionsHome()" class="w-10 h-10 shrink-0 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5" title="返回常用功能"><i class="fas fa-arrow-left"></i></button><div class="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 flex items-center justify-center"><i class="fas fa-cloud-sun-rain text-xl"></i></div><div><div class="text-[11px] text-slate-400 mb-1">常用功能 / 信息获取</div><h2 class="text-lg font-bold">天气提醒</h2><p class="text-sm text-slate-500 mt-1">按指定地区和时段读取逐小时天气，在设定时间发送简短提醒。</p></div></div>
+                                <div class="p-5 lg:p-6 max-w-4xl mx-auto space-y-5"><div class="rounded-2xl border border-sky-100 dark:border-sky-500/20 bg-sky-50/70 dark:bg-sky-500/5 p-5"><h3 class="font-semibold">设置你的天气提醒</h3><p class="text-sm text-slate-500 mt-2">创建时可设置地区、关注开始与结束时间、发送时间、重复周期和接收通道。保存后会进入定时任务列表，可继续编辑、暂停或查看运行记录。</p><div class="mt-5 flex flex-wrap gap-3"><button onclick="openSchedulerCreator('weather_hourly_brief')" class="px-5 py-2.5 rounded-xl bg-sky-600 text-white text-sm"><i class="far fa-calendar-plus mr-2"></i>新建天气提醒</button><button onclick="navigateTo('tasks');loadTasksView()" class="px-5 py-2.5 rounded-xl border text-sm"><i class="far fa-clock mr-2"></i>查看定时任务</button></div></div><div class="rounded-2xl border border-slate-100 dark:border-white/5 p-5"><h3 class="font-semibold text-sm">发送示例</h3><p class="text-sm leading-6 mt-2">今日18:00–19:00｜上海浦东新区：18.0–18.7℃，小雨转多云，降雨概率最高72%（预计0.1毫米）。建议带伞，无需特别保暖或防风。</p><p class="text-xs text-slate-400 mt-2">实际天气数值在任务执行时获取。</p></div></div>
                             </section>
                             <section id="common-function-tech-briefing" class="hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#1a1a1a] overflow-hidden">
                                 <div class="p-5 lg:p-6 border-b border-slate-100 dark:border-white/5 flex flex-wrap items-start justify-between gap-4">
@@ -2308,21 +2323,25 @@
                     <div class="flex-1 overflow-y-auto p-6 automation-page-surface">
                         <div class="max-w-[1600px] mx-auto">
                             <div class="scheduler-page-top">
-                                <div class="scheduler-page-heading">
-                                    <h1>自动化</h1>
-                                    <p>定时任务和周期性智能体运行。</p>
+                                <div class="scheduler-main-tabs">
+                                    <button id="scheduler-main-tasks" class="active" onclick="setSchedulerTaskFilter('all')">定时任务</button>
+                                    <button id="scheduler-filter-history" onclick="setSchedulerTaskFilter('history')">运行记录</button>
                                 </div>
-                                <div class="scheduler-workspace-pill" title="当前工作空间"><span>M</span>main<i class="fas fa-chevron-down" aria-hidden="true"></i></div>
+                                <div class="scheduler-top-actions">
+                                    <button id="scheduler-filter-toggle" class="scheduler-icon-button" type="button" onclick="toggleSchedulerAdvancedFilters()" title="筛选任务" aria-label="筛选任务" aria-expanded="false"><i class="fas fa-filter"></i></button>
+                                    <button id="scheduler-search-toggle" class="scheduler-icon-button" type="button" onclick="toggleSchedulerSearch()" title="搜索任务" aria-label="搜索任务" aria-expanded="false"><i class="fas fa-magnifying-glass"></i></button>
+                                    <button id="scheduler-bulk-toggle" class="scheduler-secondary-button" onclick="toggleSchedulerBulkMode()">批量管理</button>
+                                    <button id="scheduler-new-button" onclick="openSchedulerCreator()" class="scheduler-primary-button"><i class="fas fa-plus"></i> 新建 <i class="fas fa-chevron-down scheduler-new-chevron"></i></button>
+                                </div>
                             </div>
-                            <div class="scheduler-search-row">
-                                <label class="scheduler-search"><i class="fas fa-magnifying-glass"></i><input id="scheduler-task-query" type="search" placeholder="搜索自动化" oninput="filterSchedulerTasks()"></label>
-                                <button id="scheduler-filter-toggle" class="scheduler-icon-button scheduler-filter-trigger" type="button" onclick="toggleSchedulerAdvancedFilters()" title="筛选自动化" aria-label="筛选自动化" aria-expanded="false"><i class="fas fa-filter"></i></button>
+                            <div id="scheduler-search-row" class="scheduler-search-row hidden">
+                                <label class="scheduler-search"><i class="fas fa-magnifying-glass"></i><input id="scheduler-task-query" type="search" placeholder="搜索定时任务" oninput="filterSchedulerTasks()"></label>
+                                <button id="task-refresh-btn" onclick="refreshTasksView()" class="scheduler-icon-button" title="刷新"><i class="fas fa-rotate"></i></button>
                             </div>
                             <div id="scheduler-advanced-filters" class="scheduler-advanced-filters hidden">
                                 <label>执行方式<select id="scheduler-schedule-filter" onchange="filterSchedulerTasks()"><option value="">全部方式</option><option value="cron">Cron</option><option value="interval">固定间隔</option><option value="once">仅一次</option></select></label>
                                 <label>发送通道<select id="scheduler-channel-filter" onchange="filterSchedulerTasks()"><option value="">全部通道</option><option value="web">Web</option><option value="weixin">微信</option><option value="wecom_bot">企业微信</option><option value="email">邮箱</option><option value="webhook">Webhook</option></select></label>
                                 <button type="button" onclick="clearSchedulerAdvancedFilters()">清除筛选</button>
-                                <button id="scheduler-bulk-toggle" class="scheduler-secondary-button" onclick="toggleSchedulerBulkMode()">批量管理</button>
                                 <button id="task-fullscreen-btn" onclick="toggleTasksFullscreen()" class="scheduler-secondary-button" title="全屏显示">全屏显示</button>
                             </div>
                             <div id="scheduler-task-controls" class="scheduler-task-controls">
@@ -2330,11 +2349,6 @@
                                     <button id="scheduler-filter-all" class="active" onclick="setSchedulerTaskFilter('all')">全部 <span id="scheduler-count-all"></span></button>
                                     <button id="scheduler-filter-enabled" onclick="setSchedulerTaskFilter('enabled')">已启用 <span id="scheduler-count-enabled"></span></button>
                                     <button id="scheduler-filter-paused" onclick="setSchedulerTaskFilter('paused')">已暂停 <span id="scheduler-count-paused"></span></button>
-                                    <button id="scheduler-filter-history" onclick="setSchedulerTaskFilter('history')">运行历史</button>
-                                </div>
-                                <div class="scheduler-top-actions">
-                                    <button id="task-refresh-btn" onclick="refreshTasksView()" class="scheduler-icon-button" title="刷新"><i class="fas fa-rotate"></i></button>
-                                    <button id="scheduler-new-button" onclick="openSchedulerCreator()" class="scheduler-primary-button"><i class="fas fa-plus"></i> 新建自动化</button>
                                 </div>
                             </div>
                             <div id="scheduler-history-controls" class="scheduler-history-controls hidden">
@@ -2496,7 +2510,7 @@
                                         <button onclick="createPersonalTodo()" class="rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-5 text-sm"><i class="fas fa-plus mr-2"></i>新增任务</button>
                                     </div>
                                     <div class="flex flex-wrap items-center gap-5 mt-5 text-sm text-slate-500 dark:text-slate-300">
-                                        <button onclick="setPersonalTodoFilter('')" id="personal-todo-filter-all" class="flex items-center gap-1.5 text-white"><i class="fas fa-list-ul"></i>全部</button>
+                                        <button onclick="setPersonalTodoFilter('')" id="personal-todo-filter-all" class="flex items-center gap-1.5 is-active"><i class="fas fa-list-ul"></i>全部</button>
                                         <button onclick="setPersonalTodoFilter('todo')" id="personal-todo-filter-todo" class="flex items-center gap-1.5"><i class="far fa-circle"></i>待办</button>
                                         <button onclick="setPersonalTodoFilter('doing')" id="personal-todo-filter-doing" class="flex items-center gap-1.5"><i class="fas fa-arrow-right"></i>进行中</button>
                                         <button onclick="setPersonalTodoFilter('done')" id="personal-todo-filter-done" class="flex items-center gap-1.5"><i class="fas fa-check"></i>已完成</button>
@@ -2564,6 +2578,10 @@
                                         <button onclick="loadAgentRoutingPreview()" class="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm"><i class="fas fa-wand-magic-sparkles mr-2"></i>测试路由</button>
                                     </div>
                                     <div id="agent2-routing-preview" class="grid md:grid-cols-2 xl:grid-cols-3 gap-3 mt-4"></div>
+                                    <div class="mt-5 border-t border-slate-100 dark:border-white/10 pt-4">
+                                        <div class="flex flex-wrap items-center justify-between gap-2"><div><h4 class="text-sm font-semibold">真实任务评测</h4><p class="text-xs text-slate-400 mt-1">路由准确率与任务完成率分别计算；未执行的案例不会计为成功。</p></div><div class="flex gap-2"><button onclick="loadAgentEvaluation()" class="px-3 py-2 rounded-lg border text-xs">刷新评测</button><button onclick="collectAgentEvaluation()" class="px-3 py-2 rounded-lg border text-xs">收集本机指令</button></div></div>
+                                        <div id="agent2-evaluation-summary" class="mt-3 text-xs text-slate-500">正在读取评测…</div>
+                                    </div>
                                     <div class="mt-5 border-t border-slate-100 dark:border-white/10 pt-4"><div class="flex items-center justify-between"><h4 class="text-sm font-semibold">已学习恢复路径</h4><span id="agent2-recovery-summary" class="text-xs text-slate-400"></span></div><div id="agent2-recovery-paths" class="grid md:grid-cols-2 gap-3 mt-3"></div></div>
                                 </section>
                                 <section class="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#202020] p-5">
@@ -2638,10 +2656,9 @@
                                 <button class="automation-filter-button" title="筛选"><i class="fas fa-filter"></i></button>
                             </div>
                             <div class="automation-list-tabs">
-                                <button data-automation-filter="all" onclick="setAutomationTaskFilter('all')" class="automation-task-filter is-active">全部</button>
-                                <button data-automation-filter="enabled" onclick="setAutomationTaskFilter('enabled')" class="automation-task-filter">已启用</button>
-                                <button data-automation-filter="disabled" onclick="setAutomationTaskFilter('disabled')" class="automation-task-filter">已暂停</button>
-                                <button onclick="switchAutomationTab('runs')">运行历史</button>
+                                <button data-automation-filter="all" onclick="setAutomationTaskFilter('all')" class="automation-task-filter is-active">全部 <span id="automation-count-all">(0)</span></button>
+                                <button data-automation-filter="enabled" onclick="setAutomationTaskFilter('enabled')" class="automation-task-filter">已启用 <span id="automation-count-enabled">(0)</span></button>
+                                <button data-automation-filter="disabled" onclick="setAutomationTaskFilter('disabled')" class="automation-task-filter">已暂停 <span id="automation-count-disabled">(0)</span></button>
                                 <span class="flex-1"></span>
                                 <button onclick="loadAutomationTasks()" class="automation-refresh-button"><i class="fas fa-rotate"></i></button>
                                 <button onclick="openTaskCreator()" class="automation-new-button"><i class="fas fa-plus"></i>新建自动化</button>
@@ -2978,6 +2995,7 @@
                 <button onclick="showSettingsView('channels','通道与连接')" class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm"><i class="fas fa-link w-6"></i><span data-i18n="settings_nav_channels">通道与连接</span></button>
                 <button onclick="showSettingsView('tasks','定时任务')" class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm"><i class="fas fa-clock w-6"></i><span data-i18n="settings_nav_tasks">定时任务</span></button>
                 <button onclick="showSettingsView('remote-bridge','远程 Bridge')" class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm"><i class="fas fa-tower-cell w-6"></i><span data-i18n="menu_remote_bridge">远程 Bridge</span></button>
+                <button onclick="selectSettingsSection('desktop-control')" class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm"><i class="fas fa-display w-6"></i><span>电脑操控</span></button>
                 <div class="settings-nav-group-title">数据与安全</div>
                 <button onclick="showSettingsView('knowledge','数据管理')" class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm"><i class="fas fa-database w-6"></i><span data-i18n="settings_nav_data">数据管理</span></button>
                 <button onclick="showSettingsView('api','API 管理')" class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm"><i class="fas fa-code w-6"></i><span data-i18n="settings_nav_api">API 管理</span></button>
@@ -3095,6 +3113,16 @@
                 </section>
                 <section id="settings-embedded" class="settings-section hidden min-h-full"></section>
                 <section id="settings-quick-tags" class="settings-section hidden"><p class="text-sm text-slate-500 mb-4">添加常用提示词或指令，在对话输入框上方点击即可快速插入。</p><div class="flex gap-2"><input id="quick-tag-name" class="w-40 px-3 py-2 rounded-lg border bg-transparent" placeholder="标签名称"><input id="quick-tag-content" class="flex-1 px-3 py-2 rounded-lg border bg-transparent" placeholder="要插入的内容"><button onclick="addQuickTag()" class="px-4 py-2 bg-primary-500 text-white rounded-lg">添加</button></div><div id="quick-tags-settings-list" class="grid gap-3 mt-5"></div></section>
+                <section id="settings-desktop-control" class="settings-section hidden space-y-5">
+                    <p class="text-sm text-slate-500">管理 CowAgent 如何使用你电脑上的其他应用程序</p>
+                    <div class="text-sm font-semibold">控制</div>
+                    <div class="rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden bg-white dark:bg-[#202020]">
+                        <label class="flex items-center justify-between gap-4 p-4 cursor-pointer"><span class="flex items-center gap-3"><i class="fas fa-display w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-500 grid place-items-center"></i><span><b class="block text-sm">任意应用</b><small class="block text-xs text-slate-500 mt-0.5">允许 CowAgent 操控电脑上的所有可识别应用</small></span></span><span class="relative inline-flex shrink-0"><input id="desktop-control-any" type="checkbox" class="sr-only peer" onchange="saveDesktopControlSettings()"><span class="w-9 h-5 rounded-full bg-slate-300 peer-checked:bg-blue-500 transition-colors"></span><span class="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"></span></span></label>
+                        <div id="desktop-control-apps" class="divide-y divide-slate-100 dark:divide-white/10 px-4"></div>
+                    </div>
+                    <p id="desktop-control-status" class="text-xs text-slate-500" role="status"></p>
+                    <p class="text-xs text-slate-500">电脑操作由本机 MCP 工具执行。安装后可能仍需登录目标应用；本机窗口操控无需浏览器扩展或 Excel 加载项。</p>
+                </section>
                 <section id="settings-about" class="settings-section hidden"><div class="text-center py-16"><img src="assets/logo.jpg" class="w-20 h-20 rounded-2xl mx-auto mb-4"><h3 class="text-xl font-bold">CowAgent</h3><p class="text-slate-500 mt-2">本地 AI 智能体与自动化工作平台</p><p class="text-sm mt-4">当前版本：<span id="settings-version"></span></p></div></section>
                 </div>
             </main>
@@ -3538,22 +3566,37 @@
         </div>
     </div>
     <div id="scheduler-creator-modal" class="hidden fixed inset-0 z-[230] bg-black/50 p-4 items-center justify-center">
-        <div class="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl bg-white dark:bg-[#181818] shadow-2xl p-6">
-            <div class="flex justify-between"><div><h2 class="font-bold">新建定时任务</h2><p class="text-xs text-slate-400 mt-1">提醒或按时交给 AI 执行；执行结果可发送到已接入通道</p></div><button onclick="closeSchedulerCreator()"><i class="fas fa-times"></i></button></div>
-            <div class="grid gap-4 sm:grid-cols-2 mt-6">
-                <label class="text-sm">任务名称<input id="scheduler-create-name" class="mt-1 w-full rounded-xl border p-2.5 bg-transparent"></label>
-                <label class="text-sm">类型<select id="scheduler-create-action" class="mt-1 w-full rounded-xl border p-2.5 bg-transparent"><option value="agent_task">交给 AI 执行</option><option value="send_message">固定提醒</option></select></label>
-                <label class="sm:col-span-2 text-sm">执行内容<textarea id="scheduler-create-content" rows="5" class="mt-1 w-full rounded-xl border p-2.5 bg-transparent"></textarea></label>
-                <label class="text-sm">执行方式<select id="scheduler-create-type" onchange="toggleSchedulerCreateFields()" class="mt-1 w-full rounded-xl border p-2.5 bg-transparent"><option value="interval">固定间隔</option><option value="cron">Cron</option><option value="once">仅一次</option></select></label>
-                <label id="scheduler-create-interval-wrap" class="text-sm">间隔<div class="mt-1 flex gap-2"><input id="scheduler-create-interval" type="number" min="1" value="60" class="min-w-0 flex-1 rounded-xl border p-2.5 bg-transparent"><select id="scheduler-create-unit" class="rounded-xl border p-2.5 bg-transparent"><option value="60">分钟</option><option value="3600">小时</option><option value="86400">天</option></select></div></label>
-                <label id="scheduler-create-cron-wrap" class="hidden sm:col-span-2 text-sm">Cron<input id="scheduler-create-cron" value="0 9 * * *" class="mt-1 w-full rounded-xl border p-2.5 bg-transparent font-mono"></label>
-                <label id="scheduler-create-once-wrap" class="hidden sm:col-span-2 text-sm">执行时间<input id="scheduler-create-once" type="datetime-local" class="mt-1 w-full rounded-xl border p-2.5 bg-transparent"></label>
-                <label class="sm:col-span-2 text-sm">结果发送到<select id="scheduler-create-target" onchange="toggleSchedulerManualTarget()" class="mt-1 w-full rounded-xl border p-2.5 bg-transparent"><option value="">正在读取可用通道...</option></select><span class="block text-xs text-slate-400 mt-1">AI 执行结果或固定提醒会发送到这里</span></label>
-                <div id="scheduler-create-manual-wrap" class="hidden sm:col-span-2 grid sm:grid-cols-2 gap-3"><label class="text-sm">接收目标 ID<input id="scheduler-create-receiver" class="mt-1 w-full rounded-xl border p-2.5 bg-transparent" placeholder="用户、群聊、邮箱或通道要求的 ID"></label><label class="text-sm flex items-end gap-2 pb-2"><input id="scheduler-create-is-group" type="checkbox"> 这是群聊目标</label></div>
-                <label class="sm:col-span-2 text-sm"><input id="scheduler-create-silent" type="checkbox"> AI 完成后不推送结果</label>
+        <div class="scheduler-creator-dialog w-full max-h-[92vh] overflow-y-auto bg-white dark:bg-[#181818] shadow-2xl">
+            <div class="scheduler-creator-heading"><h2>新建定时任务</h2><button type="button" onclick="closeSchedulerCreator()" aria-label="关闭"><i class="fas fa-times"></i></button></div>
+            <label class="scheduler-creator-template-label">任务模板<select id="scheduler-create-template" onchange="toggleSchedulerCreateTemplate()"><option value="custom">自定义任务</option><option value="weather_hourly_brief">天气时段提醒</option></select></label>
+            <input id="scheduler-create-name" class="scheduler-creator-name" placeholder="输入任务名称" oninput="updateSchedulerCreateSubmit()" aria-label="任务名称">
+            <div id="scheduler-create-weather-fields" class="scheduler-creator-weather hidden">
+                <label>地区<input id="scheduler-weather-location" placeholder="例如：上海市浦东新区" oninput="updateSchedulerWeatherTemplate()"></label>
+                <div class="scheduler-creator-weather-hours"><label>关注开始时间<input id="scheduler-weather-start" type="time" step="60" value="18:00" onchange="updateSchedulerWeatherTemplate()"></label><label>关注结束时间<input id="scheduler-weather-end" type="time" step="60" value="19:00" onchange="updateSchedulerWeatherTemplate()"></label></div>
+                <p>关注时段和发送时间均可精确到分钟，例如 07:17–08:43；重复选“间隔”还可设置每隔几分钟执行。</p>
+                <p id="scheduler-weather-preview">发送时会读取所选时段的逐小时预报，生成单句提醒。</p>
+                <div class="flex flex-wrap items-center justify-between gap-2 text-xs"><span id="scheduler-weather-target-summary" class="text-slate-500">接收通道：正在读取…</span><button type="button" onclick="toggleSchedulerCreateAdvanced()" class="text-sky-600 hover:underline">更改接收通道</button></div>
             </div>
+            <div id="scheduler-create-prompt-wrap" class="scheduler-creator-prompt">
+                <textarea id="scheduler-create-content" rows="5" placeholder="添加提示词，描述要定时执行的任务…" oninput="updateSchedulerCreateSubmit()" aria-label="提示词"></textarea>
+                <div class="scheduler-creator-prompt-tools"><button type="button" onclick="toggleSchedulerCreateAdvanced()" title="更多任务设置" aria-label="更多任务设置"><i class="fas fa-plus"></i></button><select id="scheduler-create-action" aria-label="任务类型"><option value="agent_task">⚡ AI 执行</option><option value="send_message">固定提醒</option></select></div>
+            </div>
+            <div class="scheduler-creator-context"><span title="定时任务使用当前 Agent 的默认工作空间"><i class="far fa-folder"></i> 默认工作空间</span><span title="执行权限沿用当前 Agent 设置"><i class="fas fa-shield-halved"></i> 沿用 Agent 权限</span></div>
+            <div class="scheduler-creator-schedule">
+                <label>重复<select id="scheduler-create-repeat" onchange="toggleSchedulerCreateFields(event)"><option value="interval">间隔</option><option value="once">单次</option><option value="daily" selected>每天</option><option value="weekdays">工作日</option><option value="weekly">每周</option><option value="biweekly" disabled>每双周（暂不支持）</option><option value="monthly">每月</option><option value="yearly">每年</option></select></label>
+                <label><span id="scheduler-create-time-label">时间</span><input id="scheduler-create-time" type="time" step="60" value="09:00" onchange="toggleSchedulerCreateFields(event)"></label>
+                <label>有效期<select id="scheduler-create-validity" aria-label="有效期"><option value="unlimited">长期有效</option></select></label>
+            </div>
+            <div id="scheduler-create-date-wrap" class="scheduler-creator-extra hidden"><label>执行日期<input id="scheduler-create-date" type="date" onchange="toggleSchedulerCreateFields()"></label></div>
+            <div id="scheduler-create-weekday-wrap" class="scheduler-creator-extra hidden"><label>星期<select id="scheduler-create-weekday" onchange="toggleSchedulerCreateFields()"><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option><option value="0">周日</option></select></label></div>
+            <div id="scheduler-create-monthday-wrap" class="scheduler-creator-extra hidden"><label>每月日期<input id="scheduler-create-monthday" type="number" min="1" max="31" value="1" onchange="toggleSchedulerCreateFields()"></label></div>
+            <div id="scheduler-create-yearly-wrap" class="scheduler-creator-extra hidden"><label>每年日期<input id="scheduler-create-yearly" type="date" onchange="toggleSchedulerCreateFields()"></label></div>
+            <div id="scheduler-create-interval-wrap" class="scheduler-creator-extra hidden"><label>间隔<div class="scheduler-creator-interval"><input id="scheduler-create-interval" type="number" min="1" step="1" value="60"><select id="scheduler-create-unit"><option value="60">分钟</option><option value="3600">小时</option><option value="86400">天</option></select></div><span class="block mt-1 text-xs text-slate-400">保存后约一个间隔开始执行，之后按设定间隔重复。</span></label></div>
+            <div id="scheduler-create-advanced" class="scheduler-creator-advanced hidden"><label>结果发送到<select id="scheduler-create-target" onchange="toggleSchedulerManualTarget()"><option value="">正在读取可用通道...</option></select></label><div id="scheduler-create-manual-wrap" class="hidden"><label>接收目标 ID<input id="scheduler-create-receiver" placeholder="用户、群聊、邮箱或通道要求的 ID"></label><label class="scheduler-creator-check"><input id="scheduler-create-is-group" type="checkbox"> 这是群聊目标</label></div><label class="scheduler-creator-check"><input id="scheduler-create-silent" type="checkbox"> AI 完成后不推送结果</label><label class="scheduler-creator-check"><input id="scheduler-create-raw-cron-toggle" type="checkbox" onchange="toggleSchedulerCreateFields()"> 使用高级 Cron 表达式</label><div id="scheduler-create-cron-wrap" class="hidden"><label>Cron 表达式<input id="scheduler-create-cron" value="0 9 * * *" class="font-mono" placeholder="分 时 日 月 星期"></label></div></div>
+            <input id="scheduler-create-type" type="hidden" value="cron"><input id="scheduler-create-once" type="hidden">
+            <label class="scheduler-creator-wecom"><span>消息推送到企业微信</span><input id="scheduler-create-wecom" type="checkbox" onchange="toggleSchedulerCreateWecom()"><span class="scheduler-creator-switch" aria-hidden="true"></span></label>
             <div id="scheduler-create-preview" class="hidden mt-4 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 p-3 text-xs leading-5"></div>
-            <p id="scheduler-create-status" class="text-sm text-red-500 mt-4"></p><div class="flex justify-end gap-2 mt-6"><button onclick="closeSchedulerCreator()" class="px-4 py-2">取消</button><button onclick="createSchedulerTask()" class="px-5 py-2 rounded-xl bg-slate-900 text-white">创建</button></div>
+            <p id="scheduler-create-status" class="scheduler-creator-status" role="status" aria-live="polite"></p><div class="scheduler-creator-footer"><button type="button" onclick="closeSchedulerCreator()">取消</button><button id="scheduler-create-submit" type="button" onclick="createSchedulerTask()" disabled>确定</button></div>
         </div>
     </div>
     <div id="artifact-detail-modal" class="hidden fixed inset-0 z-[115] bg-black/50 p-4 items-center justify-center">
@@ -3600,7 +3643,7 @@
         </div>
     </div>
 
-    <script defer src="assets/js/console.js?v=20260908-05"></script>
+    <script defer src="assets/js/console.js?v=20261107-agi-evaluation"></script>
     <script defer src="assets/js/notification-center.js?v=20260831-2"></script>
     <script defer src="assets/js/workspace.js"></script>
     <meta name="cow-page-revision" content="{{COW_PAGE_REVISION}}">

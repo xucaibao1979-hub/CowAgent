@@ -59,7 +59,7 @@ def _run(agent, monkeypatch_executor):
     orig = agent_mod.AgentStreamExecutor
     agent_mod.AgentStreamExecutor = monkeypatch_executor
     try:
-        return agent.run_stream("hi")
+        return agent.run_stream("Draft a release plan for this project")
     finally:
         agent_mod.AgentStreamExecutor = orig
 
@@ -107,7 +107,7 @@ def test_new_messages_captured_when_trimmed():
     assert agent._last_run_new_messages[-1]["content"][0]["text"] == "assistant answer"
     # The captured slice must start at the new user query, not earlier turns.
     assert roles[0] == "user"
-    assert agent._last_run_new_messages[0]["content"][0]["text"] == "hi"
+    assert agent._last_run_new_messages[0]["content"][0]["text"] == "Draft a release plan for this project"
 
 
 if __name__ == "__main__":

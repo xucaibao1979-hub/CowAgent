@@ -22,7 +22,10 @@ class TestMemoryGlobalConfigSync(unittest.TestCase):
         load_config()
         self.tmp = tempfile.mkdtemp()
         self._real_home = os.environ.get("HOME")
+        self._real_userprofile = os.environ.get("USERPROFILE")
         os.environ["HOME"] = self.tmp
+        # pathlib/os.path.expanduser use USERPROFILE on Windows.
+        os.environ["USERPROFILE"] = self.tmp
         self.workspace = os.path.join(self.tmp, "custom_workspace")
         os.makedirs(self.workspace)
 
@@ -49,6 +52,10 @@ class TestMemoryGlobalConfigSync(unittest.TestCase):
             os.environ.pop("HOME", None)
         else:
             os.environ["HOME"] = self._real_home
+        if self._real_userprofile is None:
+            os.environ.pop("USERPROFILE", None)
+        else:
+            os.environ["USERPROFILE"] = self._real_userprofile
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_setup_memory_system_syncs_global_config(self):
@@ -130,7 +137,9 @@ class TestLegacyWorkspaceWarning(unittest.TestCase):
         load_config()
         self.tmp = tempfile.mkdtemp()
         self._real_home = os.environ.get("HOME")
+        self._real_userprofile = os.environ.get("USERPROFILE")
         os.environ["HOME"] = self.tmp
+        os.environ["USERPROFILE"] = self.tmp
 
         self.legacy_root = os.path.join(self.tmp, "cow")
         self.new_workspace = os.path.join(self.tmp, "custom_workspace")
@@ -148,6 +157,10 @@ class TestLegacyWorkspaceWarning(unittest.TestCase):
             os.environ.pop("HOME", None)
         else:
             os.environ["HOME"] = self._real_home
+        if self._real_userprofile is None:
+            os.environ.pop("USERPROFILE", None)
+        else:
+            os.environ["USERPROFILE"] = self._real_userprofile
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _write_legacy_db(self):

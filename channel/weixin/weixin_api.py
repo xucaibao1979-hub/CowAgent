@@ -145,10 +145,19 @@ class WeixinApi:
                 return resp.json()
             except requests.exceptions.Timeout:
                 logger.debug(f"[Weixin] API timeout: {endpoint}")
+                # A timed-out send may have reached Weixin. Its outcome is
+                # unknown, so never manufacture ret=0 or retry it blindly.
+                if endpoint == "ilink/bot/sendmessage":
+                    return {}
                 return {"ret": 0, "msgs": []}
             except (requests.exceptions.SSLError,
                     requests.exceptions.ConnectionError,
                     requests.exceptions.ChunkedEncodingError) as e:
+                if endpoint == "ilink/bot/sendmessage":
+                    # The connection can break after the server accepted the
+                    # send. Replaying it here risks duplicate messages.
+                    logger.warning("[Weixin] Send connection lost; outcome unconfirmed: %s", e)
+                    return {}
                 # Transient transport-level errors (e.g. SSLEOFError from the
                 # peer dropping the connection) are usually recoverable, so
                 # retry a few times with exponential backoff before giving up.

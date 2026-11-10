@@ -30,11 +30,30 @@ def maybe_handle_weixin_task_first(command: str) -> Optional[str]:
     if not text:
         return None
     strategy = _learning_strategy(text)
+    split = _split_email_news_request(text)
+    if split:
+        email_text, news_text = split
+        email_result = _handle_email(email_text, strategy)
+        news_result = _handle_news_or_policy(news_text, strategy)
+        return f"【邮件】\n{email_result}\n\n【新闻】\n{news_result}"
     if _looks_like_email(text):
         return _handle_email(text, strategy)
     if _looks_like_news_or_policy(text):
         return _handle_news_or_policy(text, strategy)
     return None
+
+
+def _split_email_news_request(text: str) -> Optional[Tuple[str, str]]:
+    """Keep independent mail and news clauses from swallowing one another."""
+    if "邮件" not in text or not any(word in text for word in ("新闻", "资讯", "热点")):
+        return None
+    match = re.search(r"^(.*?邮件)(?:[，,、;；]|以及|并且|并|和|与)(.+)$", text)
+    if not match or not _looks_like_email(match.group(1)):
+        return None
+    news_clause = match.group(2).strip()
+    if not any(word in news_clause for word in ("新闻", "资讯", "热点")):
+        return None
+    return match.group(1).strip(), "查" + news_clause
 
 
 def _looks_like_email(text: str) -> bool:
@@ -98,9 +117,12 @@ def _handle_email(text: str, strategy: Optional[Dict] = None) -> str:
         one_off = {
             "id": "weixin-once",
             "name": "微信邮件快速查看",
+            "source_type": "imap" if _mail_settings_ready(settings) else "local",
             "folder": parsed.get("folder") or "INBOX",
             "unread_only": bool(parsed.get("unread_only")),
             "max_messages": int(parsed.get("max_messages") or (10 if ("今天" in text or "今日" in text) else 50)),
+            "date_from": parsed.get("date_from"),
+            "date_to": parsed.get("date_to"),
             "rules": {},
         }
         service._validate_settings()
@@ -127,8 +149,12 @@ def _handle_news_or_policy(text: str, strategy: Optional[Dict] = None) -> str:
     """Run matching automation first; otherwise do a bounded one-off source read."""
     strategy = strategy or {}
     try:
+        requested_count = re.search(r"([1-9]\d?|[一二三四五六七八九十])\s*(?:条|则|篇)", text)
+        numerals = {value: index for index, value in enumerate("一二三四五六七八九十", 1)}
+        count_text = requested_count.group(1) if requested_count else ""
+        max_items = max(1, min(int(count_text) if count_text.isdigit() else numerals.get(count_text, 8), 8))
         service, task = _find_matching_news_task(text)
-        if service and task:
+        if service and task and not requested_count and "附原文" not in text:
             result = service.run(task["id"], trigger="weixin")
             report = _compact_report(result, empty_hint="我已执行匹配任务，但当前条件下暂无合格结果。")
             if not _looks_empty_report(report):
@@ -140,30 +166,62 @@ def _handle_news_or_policy(text: str, strategy: Optional[Dict] = None) -> str:
 
         news = NewsAssistantService(_data_dir())
         fiscal = any(term in text for term in ("财税", "税务", "财政", "政策", "发票", "税收"))
+        week_requested = any(term in text for term in ("最近一周", "近一周", "过去一周", "这一周", "本周", "上周", "最近7天", "最近七天"))
+        since_hours = 168 if week_requested else 24
+        personal = load_personal_context(_data_dir()) if not fiscal else {}
         keywords = _news_keywords(text, fiscal=fiscal)
+        if "我项目相关" in text or "我的项目相关" in text:
+            project_topics = [str(x).strip() for x in personal.get("topics") or [] if str(x).strip()]
+            if project_topics:
+                keywords = project_topics[:4]
+            else:
+                return "尚未找到你的项目主题。请告诉我项目名称或关键词，我再查询相关的重要新闻。"
         sources = list(FISCAL_OFFICIAL_SOURCES) if fiscal else []
         if not sources:
-            personal = load_personal_context(_data_dir())
             domains = personal.get("source_domains") or []
-            sources = list(personal.get("source_urls") or []) or google_news_sources(domains, keywords, 8)
+            sources = list(personal.get("source_urls") or []) or google_news_sources(domains, keywords, 8, days=7 if week_requested else 1)
+        if not sources:
+            # A one-off public news lookup must work before the user configures
+            # any RSS feed or personal profile.  The feed itself supplies a
+            # bounded search query; preview_sources still checks publication.
+            query = "(IT OR 科技 OR 人工智能 OR AI Agent OR 软件开发 OR 云计算)"
+            sources = [NewsAssistantService._google_news_url(f"{query} when:{7 if week_requested else 1}d")]
         base_payload = {
             "sources": sources[:12],
             "keywords": keywords,
-            "rules": {"include": [] if fiscal else keywords[:3], "exclude": ["培训", "招聘"]},
-            "include": [] if fiscal else keywords[:3],
+            "rules": {"include": [], "exclude": ["培训", "招聘"]},
+            "include": [],
             "exclude": ["培训", "招聘"],
-            "since_hours": 24,
-            "limit": 8,
+            "since_hours": since_hours,
+            "limit": 80 if not fiscal else max_items,
         }
         preview, recovery_actions = _preview_with_learning(news, base_payload, strategy or {})
         items = preview.get("items") or []
+        if not fiscal and any(term in text.lower() for term in ("it", "科技", "技术", "人工智能", "ai")):
+            relevant = [item for item in items if re.search(
+                r"(?i)(?:\bIT\b|\bAI\b|Agent|人工智能|科技|技术|芯片|软件|云计算|大模型|机器人|网络安全|半导体|开源|开发)",
+                str(item.get("title") or ""))]
+            items = relevant
+            items = _rank_tech_news_items(items)
+        if not items and not fiscal:
+            # The public search feed can be unavailable by region.  Try two
+            # direct publisher feeds before reporting a source outage.
+            backup_sources = ["https://www.ithome.com/rss/", "https://blogs.microsoft.com/feed/"]
+            backup_payload = {**base_payload, "sources": backup_sources, "include": []}
+            backup = news.preview_sources(backup_payload)
+            if backup.get("items"):
+                preview, items, sources = backup, backup["items"], backup_sources
+                recovery_actions.append("公开检索不可用，已改查发布方订阅源")
         if not items:
             _record_failure(text, "empty_result", RuntimeError("当前条件下暂无合格结果"), "news_task_first", strategy)
-            return "我已尝试从已接入来源查询，当前条件下暂无合格结果。你可以换个关键词，或在 Web 端「常用功能 → 信息来源」增加来源。"
-        task = {"name": "最新财税政策" if fiscal else "微信快速资讯", "sources": sources, "keywords": keywords, "max_items": min(8, len(items)), "rules": {}}
-        report = news._build_report(task, items[:8], preview.get("errors") or [], news._ai_overview(task, items[:8]))
-        if recovery_actions:
+            return "最近查询范围内没有找到可核实的新闻结果；已尝试公开检索和发布方订阅源。"
+        task = {"name": "最新财税政策" if fiscal else "微信快速资讯", "sources": sources, "keywords": keywords, "max_items": min(max_items, len(items)), "rules": {}}
+        report = (news._build_report(task, items[:max_items], preview.get("errors") or [], news._ai_overview(task, items[:max_items]))
+                  if fiscal else _format_news_quick_result(items[:max_items], since_hours,
+                                                           include_links=any(term in text for term in ("附原文", "链接", "网址"))))
+        if recovery_actions and fiscal:
             report = report.rstrip() + "\n\n> 已自动自救：" + "；".join(recovery_actions)
+        if recovery_actions:
             _record_success(text, "news", "expanded_7d", "news_task_first", "；".join(recovery_actions), strategy)
         else:
             _record_success(text, "news", "direct_preview", "news_task_first", f"命中 {len(items)} 条", strategy)
@@ -177,6 +235,44 @@ def _handle_news_or_policy(text: str, strategy: Optional[Dict] = None) -> str:
             f"原因：{_friendly_error(error)}\n"
             "我已记录这次失败。你可以稍后重试，或在 Web 端检查「联网搜索/信息来源/通知通道」配置。"
         )
+
+
+def _rank_tech_news_items(items: List[Dict]) -> List[Dict]:
+    """Favor concrete technology developments over promotion and market chatter."""
+    strong = ("发布", "推出", "上线", "更新", "开源", "收购", "漏洞", "安全", "芯片", "半导体", "研究", "实验", "系统", "模型", "产品", "GitHub")
+    weak = ("入选", "亮相", "斩获", "榜单", "图谱", "网红", "营销", "股价", "股票", "概念股", "业绩", "暴增", "测评", "评测", "豪赌", "受益", "搞头吗", "进博")
+
+    def score(item: Dict) -> Tuple[int, float]:
+        title = str(item.get("title") or "")
+        value = 2 * sum(word.lower() in title.lower() for word in strong)
+        value -= 3 * sum(word in title for word in weak)
+        if any(word.lower() in title.lower() for word in ("OpenAI", "Microsoft", "微软", "英伟达", "NVIDIA", "Google", "谷歌", "GitHub", "华为")):
+            value += 2
+        try:
+            published = parsedate_to_datetime(str(item.get("published_at") or "")).timestamp()
+        except (ValueError, TypeError, OverflowError, AttributeError):
+            published = 0.0
+        return value, published
+
+    return sorted(items, key=score, reverse=True)
+
+
+def _format_news_quick_result(items: List[Dict], since_hours: int, include_links: bool = False) -> str:
+    """Show verified headlines and dates without invented generic summaries."""
+    period = "最近一周" if since_hours >= 168 else "最近24小时"
+    lines = [f"{period}科技新闻（{len(items)} 条）："]
+    for index, item in enumerate(items, 1):
+        title = re.sub(r"\s+", " ", str(item.get("title") or "")).strip()
+        published = str(item.get("published_at") or "").strip()
+        try:
+            published = parsedate_to_datetime(published).astimezone().strftime("%m-%d %H:%M")
+        except (ValueError, TypeError, OverflowError, AttributeError):
+            published = published[:16]
+        link = str(item.get("link") or "").strip()
+        lines.append(f"{index}. {title}" + (f"（{published}）" if published else ""))
+        if include_links and link:
+            lines.append("   " + link)
+    return "\n".join(lines)
 
 
 def _find_matching_news_task(text: str) -> Tuple[object, Optional[Dict]]:
@@ -250,6 +346,8 @@ def _news_keywords(text: str, fiscal: bool = False) -> List[str]:
     for token in ("AI", "Agent", "人工智能", "创业", "科技", "国内热点", "行业动态"):
         if token.lower() in text.lower() or token in text:
             terms.append(token)
+    if re.search(r"(?<![A-Za-z])IT(?![A-Za-z])", text, re.I):
+        terms.extend(["IT", "科技", "人工智能"])
     return terms or ["AI", "科技", "创业"]
 
 

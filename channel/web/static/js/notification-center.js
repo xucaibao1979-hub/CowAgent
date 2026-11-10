@@ -73,13 +73,8 @@ async function loadNotificationCenter() {
             ? items.map(item => renderNotificationItem(item)).join('')
             : `<div class="py-12 text-center text-slate-400 text-sm"><i class="fas fa-bell-slash text-2xl block mb-3"></i>${notificationText('暂无新消息', 'No new messages')}</div>`;
         notificationCurrentSignature = items.map(x => x.id).sort().join('|');
-        const acknowledged = sessionStorage.getItem('cow_ack_inbox_signature') || '';
         const button = document.getElementById('notification-toggle');
-        const shouldBlink = !!notificationCurrentSignature && notificationCurrentSignature !== acknowledged;
-        button?.classList.toggle('animate-pulse', shouldBlink);
-        button?.classList.toggle('text-amber-500', shouldBlink);
-        button?.classList.toggle('ring-2', shouldBlink);
-        button?.classList.toggle('ring-amber-300', shouldBlink);
+        button?.classList.remove('animate-pulse', 'text-amber-500', 'ring-2', 'ring-amber-300');
     } catch (error) {
         list.innerHTML = `<div class="p-4 text-xs text-red-500">${escapeHtml(error.message)}</div>`;
     }

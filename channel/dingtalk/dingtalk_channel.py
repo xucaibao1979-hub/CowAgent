@@ -8,7 +8,9 @@ import copy
 import json
 # -*- coding=utf-8 -*-
 import logging
+import math
 import os
+import subprocess
 import time
 import requests
 
@@ -823,9 +825,10 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                 logger.info(f"[DingTalk] Sending video: {reply.content}")
                 media_id = self.upload_media(reply.content, media_type="video")
                 if media_id:
-                    # 发送视频消息
+                    # URL 上传会在 upload_media 内下载，不探测远程地址。
+                    duration = self._get_video_duration(file_path) if os.path.isfile(file_path) else 30
                     msg_param = {
-                        "duration": "30",  # TODO: 获取实际视频时长
+                        "duration": str(duration),
                         "videoMediaId": media_id,
                         "videoType": "mp4",
                         "height": "400",
@@ -937,6 +940,23 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                 self.reply_text(reply.content, incoming_message)
             return
     
+    @staticmethod
+    def _get_video_duration(file_path: str) -> int:
+        """Return local video duration in seconds, or the legacy 30s fallback."""
+        try:
+            result = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0:
+                seconds = float(result.stdout.strip())
+                if math.isfinite(seconds) and seconds > 0:
+                    return max(1, math.ceil(seconds))
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired, ValueError) as exc:
+            logger.warning(f"[DingTalk] Could not read video duration: {exc}")
+        return 30
+
     def _send_file_message(self, access_token: str, incoming_message, msg_key: str, msg_param: dict, is_group: bool) -> bool:
         """
         发送文件/视频消息的通用方法

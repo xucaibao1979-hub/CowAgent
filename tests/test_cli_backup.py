@@ -1,6 +1,7 @@
 """Tests for portable CowAgent backup archives."""
 
 import json
+import os
 import zipfile
 from pathlib import Path
 
@@ -99,6 +100,8 @@ def test_fresh_restore_ignores_archive_controlled_destinations(tmp_path, monkeyp
 
     fake_home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(fake_home))
+    if os.name == "nt":
+        monkeypatch.setenv("USERPROFILE", str(fake_home))
     target_data = tmp_path / "target-data"
     result = restore_backup_archive(archive, target_data)
 

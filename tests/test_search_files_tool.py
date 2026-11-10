@@ -250,7 +250,12 @@ def test_symlink_to_credential_file_is_skipped_not_opened(tmp_path, monkeypatch)
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    (workspace / "decoy.txt").symlink_to(fake_cow / "secret.env")
+    try:
+        (workspace / "decoy.txt").symlink_to(fake_cow / "secret.env")
+    except OSError as error:
+        if getattr(error, "winerror", None) == 1314:
+            pytest.skip("Windows account lacks symbolic-link privilege")
+        raise
     (workspace / "real.txt").write_text("API_KEY=this one is fine\n", encoding="utf-8")
 
     tool = _make_tool(workspace)
@@ -276,7 +281,12 @@ def test_symlinked_directory_pointing_at_credential_dir_is_pruned(tmp_path, monk
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    (workspace / "decoy_dir").symlink_to(fake_cow, target_is_directory=True)
+    try:
+        (workspace / "decoy_dir").symlink_to(fake_cow, target_is_directory=True)
+    except OSError as error:
+        if getattr(error, "winerror", None) == 1314:
+            pytest.skip("Windows account lacks symbolic-link privilege")
+        raise
 
     tool = _make_tool(workspace)
     result = tool.execute({"pattern": "API_KEY"})

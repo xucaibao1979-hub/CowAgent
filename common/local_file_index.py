@@ -8,6 +8,8 @@ respecting an explicit allow-list of search roots.
 from __future__ import annotations
 
 import os
+import ntpath
+from difflib import SequenceMatcher
 import re
 import sqlite3
 import threading
@@ -42,25 +44,53 @@ class FileSearchIntent:
     extensions: set[str]
     recent_days: int = 0
     limit: int = 8
+    location: str = ""
+    explicit_path: str = ""
 
 
 def parse_file_search_intent(message: str) -> Optional[FileSearchIntent]:
     text = str(message or "").strip()
+    # Sending a file to a person through a desktop app needs the full Agent
+    # workflow; the read-only WeChat filename shortcut must not intercept it.
+    if re.search(r"(?:给|向).{1,40}(?:发送|发|传).{0,100}(?:文件|附件|图片|照片|\.[A-Za-z0-9]{1,10}\s*$)", text):
+        return None
+    supplied_path = re.search(
+        r"(?<![A-Za-z0-9])[A-Za-z]:[\\/][^<>:\"|?*\r\n，,。；;！!？?]+?\.[A-Za-z0-9]{1,10}"
+        r"(?=$|[\s，,。；;！!？?])",
+        text,
+    )
+    if supplied_path:
+        path = supplied_path.group(0).strip()
+        filename = ntpath.basename(path)
+        suffix = ntpath.splitext(filename)[1].lower()
+        return FileSearchIntent(query=filename, extensions={suffix} if suffix else set(), explicit_path=path)
     # A user commonly follows a broad request with only the exact filename,
     # e.g. ``网络安全应急预案框架.docx``.  Treat that as a deterministic file
     # search instead of sending it back through the general chat model.
     standalone_filename = re.fullmatch(
-        r"\s*([^\\/:*?\"<>|\r\n]{1,180}\.[A-Za-z0-9]{1,10})\s*", text
+        r"\s*([^\\/:*?\"<>|，,。；;！!？?\r\n]{1,180}\.[A-Za-z0-9]{1,10})\s*", text
+    )
+    named_filename = re.search(
+        r"(?:文件名称|文件名|名称)(?:是|叫|为)?\s*[：:]?\s*[“\"']?"
+        r"([^\\/:*?\"'<>|，,。；;！!？?\s]{1,180}\.[A-Za-z0-9]{1,10})",
+        text,
     )
     find_intent = re.search(r"(?:找|查找|搜索|查一下|帮我找|帮我查).{0,30}(?:文件|文档|表格|报告|周报|合同|资料|图片|照片)", text, re.I)
     send_intent = (re.search(r"(?:文件|文档|表格|报告|周报|合同|资料|图片|照片).{0,10}(?:发|传|发送)给我", text, re.I)
                    and re.search(r"(?:电脑|本地|桌面|下载|文档目录|名字?叫|名称)", text, re.I))
-    if not find_intent and not send_intent and not standalone_filename:
+    if not find_intent and not send_intent and not standalone_filename and not named_filename:
         return None
-    if standalone_filename:
-        filename = standalone_filename.group(1).strip()
+    if standalone_filename or named_filename:
+        filename = (named_filename or standalone_filename).group(1).strip()
         suffix = Path(filename).suffix.lower()
         return FileSearchIntent(query=filename, extensions={suffix} if suffix else set())
+    person_id_photo = re.search(r"(?:一张|一份|找|查|查询|搜索)\s*([\u4e00-\u9fff·]{2,8}?)(?:的)?身份证(?:正面|反面)?(?:照片|图片)?", text)
+    if person_id_photo:
+        return FileSearchIntent(query=person_id_photo.group(1), extensions=set(_TYPE_EXTENSIONS["图片"]), limit=20)
+    desktop_contract = re.search(
+        r"桌面上?(?:的)?(?:有个|有份|一个|一份)?\s*([^，。；;]{1,100}?合同)(?:文件)?\s*(?:发|传|发送)给我",
+        text,
+    )
     quoted = re.search(r"[“\"']([^”\"']{1,100})[”\"']", text)
     direct_send = re.search(
         r"(?:请|麻烦)?(?:帮我)?(?:把|将)?(?:桌面上?|电脑上?|电脑里|本地|下载目录|文档目录)(?:的)?\s*"
@@ -75,11 +105,13 @@ def parse_file_search_intent(message: str) -> Optional[FileSearchIntent]:
         text, re.I,
     )
     work = quoted.group(1) if quoted else (
-        direct_send.group(1) if direct_send else (
-            named.group(1) if named else (located.group(1) if located else text)
+        desktop_contract.group(1) if desktop_contract else (
+            direct_send.group(1) if direct_send else (
+                named.group(1) if named else (located.group(1) if located else text))
         )
     )
     work = re.sub(r"^(?:请|麻烦)?(?:帮我)?(?:把|将)?\s*", "", work)
+    work = re.sub(r"^(?:一个)?(?:叫|名叫|名为)\s*", "", work)
     work = re.sub(r"^(?:请|麻烦)?(?:帮我)?(?:在电脑里|在本地|从电脑里)?(?:找|查找|搜索|查一下)\s*", "", work)
     work = re.sub(r"^(?:文件|文档|资料)\s*[：:]?\s*", "", work)
     work = re.sub(r"(?:电脑里|本地|电脑上|桌面上?|下载目录|文档目录|中的|里面|文件名|名称|名字)", " ", work)
@@ -103,7 +135,8 @@ def parse_file_search_intent(message: str) -> Optional[FileSearchIntent]:
     if not query and not extensions:
         return FileSearchIntent("", extensions)
     return FileSearchIntent(query=query, extensions=extensions,
-                            recent_days=int(days.group(1)) if days else 0)
+                            recent_days=int(days.group(1)) if days else 0,
+                            location="desktop" if "桌面" in text else "")
 
 
 class LocalFileIndex:
@@ -197,6 +230,8 @@ class LocalFileIndex:
         return len(rows)
 
     def search(self, intent: FileSearchIntent) -> List[dict]:
+        if intent.explicit_path:
+            return self._search_explicit_path(intent)
         if self.count() == 0:
             self.refresh()
         elif time.time() - self.last_refresh() > 900:
@@ -204,9 +239,15 @@ class LocalFileIndex:
         tokens = [token for token in re.split(r"\s+", intent.query.lower()) if token]
         sql = "SELECT path,name,ext,mtime,size,root FROM files WHERE 1=1"
         params: List[object] = []
+        scoped_root = self._scoped_root(intent)
+        if intent.location and scoped_root is None:
+            return []
+        if scoped_root is not None:
+            sql += " AND path LIKE ?"
+            params.append(str(scoped_root).rstrip("\\/") + os.sep + "%")
         for token in tokens:
-            sql += " AND lower(name) LIKE ?"
-            params.append(f"%{token}%")
+            sql += " AND (lower(name) LIKE ? OR lower(path) LIKE ?)"
+            params.extend((f"%{token}%", f"%{token}%"))
         if intent.extensions:
             sql += " AND ext IN (" + ",".join("?" for _ in intent.extensions) + ")"
             params.extend(sorted(intent.extensions))
@@ -225,7 +266,85 @@ class LocalFileIndex:
         # roots.
         if not results and self._looks_like_explicit_filename(intent.query):
             results = self._search_exact_filename(intent)
+        if not results and scoped_root is not None:
+            results = self._search_scoped_live(intent, scoped_root)
         return results
+
+    def is_authorized_path(self, path: str | Path) -> bool:
+        try:
+            candidate = Path(path).resolve()
+            return any(candidate == root or candidate.is_relative_to(root) for root in self.roots())
+        except (OSError, ValueError):
+            return False
+
+    def _search_explicit_path(self, intent: FileSearchIntent) -> List[dict]:
+        path = Path(intent.explicit_path).resolve()
+        if not self.is_authorized_path(path) or not path.is_file():
+            return []
+        try:
+            stat = path.stat()
+        except OSError:
+            return []
+        if intent.extensions and path.suffix.lower() not in intent.extensions:
+            return []
+        return [{"path": str(path), "name": path.name, "ext": path.suffix.lower(),
+                 "mtime": stat.st_mtime, "size": stat.st_size, "root": str(path.parent)}]
+
+    def suggest_nearby(self, intent: FileSearchIntent, hint: str = "", limit: int = 5) -> List[dict]:
+        if not intent.explicit_path:
+            return []
+        parent = Path(intent.explicit_path).resolve().parent
+        if not self.is_authorized_path(parent) or not parent.is_dir():
+            return []
+        stem = Path(intent.query).stem.casefold()
+        hint = str(hint or "").casefold()
+        suggestions = []
+        try:
+            for path in parent.iterdir():
+                if not path.is_file() or (intent.extensions and path.suffix.lower() not in intent.extensions):
+                    continue
+                candidate_stem = path.stem.casefold()
+                similarity = SequenceMatcher(None, stem, candidate_stem).ratio()
+                if stem not in candidate_stem and stem[:2] not in candidate_stem and similarity < 0.55 and (not hint or hint not in candidate_stem):
+                    continue
+                stat = path.stat()
+                score = (2 if hint and hint in candidate_stem else 0) + (1 if stem in candidate_stem else 0) + similarity
+                suggestions.append((score, stat.st_mtime, {"path": str(path), "name": path.name,
+                                                          "ext": path.suffix.lower(), "mtime": stat.st_mtime,
+                                                          "size": stat.st_size, "root": str(parent)}))
+        except OSError:
+            return []
+        suggestions.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return [item[2] for item in suggestions[:max(1, min(limit, 10))]]
+
+    def _scoped_root(self, intent: FileSearchIntent) -> Optional[Path]:
+        if intent.location != "desktop":
+            return None
+        desktop = self._desktop_path().resolve()
+        if any(desktop == root or desktop.is_relative_to(root) for root in self.roots()):
+            return desktop
+        return None
+
+    def _search_scoped_live(self, intent: FileSearchIntent, root: Path) -> List[dict]:
+        tokens = [token for token in re.split(r"\s+", intent.query.casefold()) if token]
+        matches = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [name for name in dirnames if name not in _SKIP_DIRS and not name.startswith(".")]
+            for name in filenames:
+                path = Path(dirpath) / name
+                if not all(token in name.casefold() for token in tokens):
+                    continue
+                if intent.extensions and path.suffix.lower() not in intent.extensions:
+                    continue
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                matches.append({"path": str(path), "name": name, "ext": path.suffix.lower(),
+                                "mtime": stat.st_mtime, "size": stat.st_size, "root": str(root)})
+                if len(matches) >= max(1, min(intent.limit, 20)):
+                    return sorted(matches, key=lambda item: item["mtime"], reverse=True)
+        return sorted(matches, key=lambda item: item["mtime"], reverse=True)
 
     @staticmethod
     def _looks_like_explicit_filename(query: str) -> bool:
@@ -238,7 +357,8 @@ class LocalFileIndex:
         seen_paths = set()
         # Search narrower roots first and avoid walking them again underneath a
         # subsequently configured drive root.
-        roots = sorted(self.roots(), key=lambda item: len(str(item)), reverse=True)
+        scoped_root = self._scoped_root(intent)
+        roots = [scoped_root] if scoped_root is not None else sorted(self.roots(), key=lambda item: len(str(item)), reverse=True)
         for root in roots:
             try:
                 for dirpath, dirnames, filenames in os.walk(root):
@@ -312,14 +432,27 @@ def get_local_file_index() -> LocalFileIndex:
         return _instance
 
 
-def format_file_search_reply(intent: FileSearchIntent, hits: Iterable[dict]) -> str:
+def format_file_search_reply(intent: FileSearchIntent, hits: Iterable[dict], requested_send: bool = False,
+                             sensitive_identity: bool = False) -> str:
     hits = list(hits)
     if not hits:
         subject = intent.query or "指定类型"
-        return f"没有在已授权目录中找到“{subject}”相关文件。你可以补充文件名、类型或大致所在目录。"
+        return f"已查找授权目录中的文件名和路径，未匹配到“{subject}”。未检查图片内容；如文件在授权范围外，请补充所在目录或到设置中添加授权目录。"
     lines = [f"🔎 找到 {len(hits)} 个相关文件（按最新修改排序）："]
     for index, item in enumerate(hits, 1):
         stamp = datetime.fromtimestamp(float(item["mtime"])).strftime("%Y-%m-%d %H:%M")
         lines.append(f"{index}. {item['name']}\n   {stamp}｜{item['path']}")
-    lines.append("\n回复“发送第1个”可继续发送文件；移动、删除或覆盖前仍会请求审批。")
+    if sensitive_identity:
+        lines.append("\n这可能是证件照片，尚未核对图片内容；不会仅凭文件名自动发送。请回复准确路径，或核对目录后回复“发送第N个”（例如“发送第2个”）。")
+    elif len(hits) > 1 and _looks_like_identity_photo_search(intent):
+        lines.append("\n找到多份同名证件照片。这些只是文件名匹配结果，尚未核对图片内容，暂不自动发送；请回复准确路径，或核对目录后回复“发送第N个”。")
+    elif len(hits) > 1 and requested_send:
+        lines.append("\n找到多个候选文件，暂不自动发送。请回复准确路径，或核对目录和文件名后回复“发送第N个”。")
+    else:
+        lines.append("\n回复“发送第1个”可继续发送文件；移动、删除或覆盖前仍会请求审批。")
     return "\n".join(lines)
+
+
+def _looks_like_identity_photo_search(intent: FileSearchIntent) -> bool:
+    return bool(re.search(r"(?:身份证|正面|反面)", intent.query) and
+                (not intent.extensions or bool(intent.extensions & _TYPE_EXTENSIONS["图片"])))

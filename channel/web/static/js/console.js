@@ -135,7 +135,7 @@ const I18N = {
         steer_active: '引导当前任务',
         slash_logs: '查看最近日志',
         slash_version: '查看版本',
-        input_placeholder: '输入消息...',
+        input_placeholder: '今天帮你做些什么？@ 添加上下文，调用技能与指令',
         config_title: '配置管理', config_desc: '管理模型和 Agent 配置',
         config_model: '模型配置', config_agent: 'Agent 配置',
         config_language: '语言', config_language_hint: '界面展示、命令文案、系统提示词等使用的语言（与右上角切换同步）',
@@ -473,7 +473,7 @@ const I18N = {
         steer_active: '引導當前任務',
         slash_logs: '檢視最近日誌',
         slash_version: '檢視版本',
-        input_placeholder: '輸入訊息...',
+        input_placeholder: '今天幫你做些什麼？@ 加入上下文、調用技能與指令',
         config_title: '設定管理', config_desc: '管理模型和 Agent 設定',
         config_model: '模型設定', config_agent: 'Agent 設定',
         config_language: '語言', config_language_hint: '介面展示、命令文案、系統提示詞等使用的語言（與右上角切換同步）',
@@ -795,7 +795,7 @@ const I18N = {
         steer_active: 'Steer active task',
         slash_logs: 'Show recent logs',
         slash_version: 'Show version',
-        input_placeholder: 'Type a message...',
+        input_placeholder: 'What can I help with? Add context, skills, or commands with @',
         config_title: 'Configuration', config_desc: 'Manage model and agent settings',
         config_model: 'Model Configuration', config_agent: 'Agent Configuration',
         config_language: 'Language', config_language_hint: 'Language for the UI, command text, system prompts and more (synced with the top-right switch)',
@@ -2173,12 +2173,14 @@ function renderMemoryFactDetail(fact = {}, events = [], sourceTrace = {}) {
     const status = memoryFactStatusOf(fact);
     const tags = Array.isArray(fact.tags) ? fact.tags : [];
     const metadata = fact.metadata && typeof fact.metadata === 'object' ? fact.metadata : {};
+    const relatedIds = Array.isArray(metadata.possible_conflicts) ? metadata.possible_conflicts : [];
     const metadataHtml = Object.keys(metadata).length
         ? `<pre class="mt-2 max-h-40 overflow-auto rounded-xl bg-slate-50 dark:bg-white/5 p-3 text-[11px] text-slate-500 whitespace-pre-wrap">${escapeHtml(JSON.stringify(metadata, null, 2))}</pre>`
         : '<p class="mt-2 text-xs text-slate-400">暂无附加元数据。</p>';
     const sourceUrl = fact.source_url ? `<a href="${escapeHtml(fact.source_url)}" target="_blank" rel="noopener" class="text-primary-500 hover:underline break-all">${escapeHtml(fact.source_url)}</a>` : '<span class="text-slate-400">无来源链接</span>';
     body.innerHTML = `<div class="space-y-4">
         ${renderMemoryFactSourceTrace(sourceTrace)}
+        ${relatedIds.length ? `<section class="rounded-2xl border border-amber-200 bg-amber-50/70 dark:bg-amber-500/10 p-4 text-xs"><b>可能与现有记忆不一致，请核对后再确认生效</b><div class="mt-2 flex flex-wrap gap-2">${relatedIds.map(id => `<button onclick="openMemoryFactDetail('${encodeURIComponent(id)}')" class="px-2 py-1 rounded-lg bg-white dark:bg-white/10 text-amber-700">查看相关记忆</button>`).join('')}</div></section>` : ''}
         <section class="rounded-2xl border border-slate-200 dark:border-white/10 p-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="min-w-0">
@@ -2193,6 +2195,16 @@ function renderMemoryFactDetail(fact = {}, events = [], sourceTrace = {}) {
                 <span class="text-xs text-slate-400">${escapeHtml(String(fact.updated_at || '').replace('T', ' ').slice(0, 19))}</span>
             </div>
             <p class="mt-4 rounded-xl bg-slate-50 dark:bg-white/5 p-4 text-sm leading-7 text-slate-700 dark:text-slate-200 whitespace-pre-wrap">${escapeHtml(fact.content || '')}</p>
+            ${status !== 'deleted' ? `<label class="mt-4 block text-xs text-slate-500">发现记忆有误？填写正确内容</label><textarea id="memory-fact-correction" rows="2" class="mt-2 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#222] p-3 text-sm" placeholder="输入纠正后的完整内容">${escapeHtml(fact.content || '')}</textarea>` : ''}
+            ${status !== 'deleted' ? `<div class="mt-4 grid sm:grid-cols-2 gap-3 text-xs">
+                <label class="block text-slate-500">有效期截止（留空为长期有效）
+                    <input id="memory-fact-valid-until" type="datetime-local" value="${escapeHtml(String(metadata.valid_until || '').slice(0, 16))}" class="mt-2 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#222] p-2 text-sm text-slate-700 dark:text-slate-200">
+                </label>
+                <label class="block text-slate-500">适用项目（留空为通用）
+                    <input id="memory-fact-applies-to" value="${escapeHtml(metadata.applies_to || '')}" placeholder="例如：基金项目" class="mt-2 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#222] p-2 text-sm text-slate-700 dark:text-slate-200">
+                </label>
+                <button onclick="saveMemoryFactConstraints('${encodeURIComponent(fact.id || '')}')" class="sm:col-span-2 justify-self-start px-3 py-2 rounded-xl border border-blue-200 text-blue-600">保存有效期与适用范围</button>
+            </div>` : ''}
             <div class="mt-4 grid sm:grid-cols-2 gap-3 text-xs">
                 <div class="rounded-xl bg-slate-50 dark:bg-white/5 p-3"><b class="block text-slate-500 mb-1">来源</b>${escapeHtml(fact.source || '本地学习')}</div>
                 <div class="rounded-xl bg-slate-50 dark:bg-white/5 p-3"><b class="block text-slate-500 mb-1">范围</b>${escapeHtml(fact.scope || 'private')}</div>
@@ -2217,6 +2229,7 @@ function renderMemoryFactDetail(fact = {}, events = [], sourceTrace = {}) {
         <footer class="sticky bottom-0 -mx-5 -mb-5 bg-white/95 dark:bg-[#181818]/95 border-t border-slate-200 dark:border-white/10 p-4 flex flex-wrap items-center justify-between gap-3">
             <button onclick="insertFactIntoMemoryWiki('${encodeURIComponent(fact.id || '')}')" class="px-3 py-2 rounded-xl border border-purple-200 dark:border-purple-500/20 text-purple-600 text-sm"><i class="fas fa-plus mr-1"></i>插入当前 Wiki</button>
             <div class="flex flex-wrap gap-2">
+                ${status !== 'deleted' ? `<button onclick="correctMemoryFact('${encodeURIComponent(fact.id || '')}')" class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm"><i class="fas fa-pen mr-1"></i>保存纠正</button>` : ''}
                 ${status === 'pending' ? `<button onclick="updateMemoryFactStatus(event,'${encodeURIComponent(fact.id || '')}','approve');closeMemoryFactDetail()" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm"><i class="fas fa-circle-check mr-1"></i>确认生效</button>` : ''}
                 ${status === 'disabled' ? `<button onclick="updateMemoryFactStatus(event,'${encodeURIComponent(fact.id || '')}','enable');closeMemoryFactDetail()" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm"><i class="fas fa-rotate-left mr-1"></i>恢复</button>` : ''}
                 ${status === 'active' ? `<button onclick="updateMemoryFactStatus(event,'${encodeURIComponent(fact.id || '')}','disable');closeMemoryFactDetail()" class="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm"><i class="fas fa-ban mr-1"></i>禁用</button>` : ''}
@@ -3043,13 +3056,14 @@ function toggleSidebarCompact(force){
     sidebar.querySelectorAll('nav .menu-group-items').forEach(x=>x.classList.toggle('pl-2',!compact));
     sidebar.querySelectorAll('nav .sidebar-item').forEach(x=>{x.classList.toggle('justify-center',compact);x.classList.toggle('px-3',!compact);x.title=compact?x.textContent.trim():'';});
     document.getElementById('sidebar-search-label')?.classList.toggle('hidden',compact);
-    const icon=document.getElementById('sidebar-collapse-icon');icon?.classList.toggle('fa-angles-right',compact);icon?.classList.toggle('fa-table-columns',!compact);
+    const icon=document.getElementById('sidebar-collapse-icon');icon?.classList.toggle('is-compact',compact);
+    const collapseButton=icon?.closest('button');if(collapseButton){collapseButton.title=compact?'展开侧边栏':'收起侧边栏';collapseButton.setAttribute('aria-label',collapseButton.title);}
     sidebar.style.width=compact?'4rem':`${getSavedSidebarWidth()}px`;
     localStorage.setItem('cow_sidebar_compact',compact?'1':'0');
 }
 
 const SIDEBAR_WIDTH_KEY='cow_sidebar_width';
-function getSavedSidebarWidth(){const value=Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)||240);return Math.max(220,Math.min(420,Number.isFinite(value)?value:240));}
+function getSavedSidebarWidth(){const stored=localStorage.getItem(SIDEBAR_WIDTH_KEY);const value=stored===null||stored==='240'?278:Number(stored);return Math.max(220,Math.min(420,Number.isFinite(value)?value:278));}
 function initializeSidebarResizer(){
     const sidebar=document.getElementById('sidebar'),handle=document.getElementById('sidebar-resizer');if(!sidebar||!handle)return;
     document.documentElement.style.setProperty('--cow-sidebar-width',`${getSavedSidebarWidth()}px`);
@@ -3116,7 +3130,7 @@ function commonCapabilityStatusClass(status){if(status==='success')return 'bg-em
 function openCommonCapabilityTarget(target){if(target==='intelligence'){navigateTo('intelligence');return;}if(target==='remote-bridge'){openSettingsCenter?.();setTimeout(()=>showSettingsView?.('remote-bridge','远程 Bridge'),60);return;}if(target==='channels'){openSettingsCenter?.();setTimeout(()=>showSettingsView?.('channels','通道与连接'),60);return;}if(target==='maintenance'){openSettingsCenter?.();setTimeout(()=>showSettingsView?.('maintenance','维护看板'),80);return;}if(target==='agent2'){navigateTo('intelligence');setTimeout(()=>{switchAutomationTab?.('agent2');loadAgent2Dashboard?.();},80);return;}if(target==='agent-reach'){navigateTo('common-functions');setTimeout(()=>openCommonFunction('agent-reach'),80);return;}if(target==='artifacts'){navigateTo('artifacts');return;}}
 function recordCommonSuggestionOpen(target){if(!target)return;fetch('/api/agent/capability-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,action:'open'})}).then(r=>r.json()).then(data=>{if(data.status==='success')commonCapabilitySuggestions=data.suggestions||commonCapabilitySuggestions;}).catch(()=>{});}
 function openCommonSuggestionTarget(target){const suggestion=(commonCapabilitySuggestions||[]).find(item=>item.target===target)||{};recordCommonSuggestionOpen(target);if(suggestion.prompt){navigateTo('intelligence');setTimeout(()=>{openTaskCreator?.();const input=document.getElementById('natural-task-prompt');if(input){input.value=suggestion.prompt;input.dispatchEvent(new Event('input',{bubbles:true}));parseNaturalTask?.();}},120);return;}if(target==='failed_runs'){navigateTo('intelligence');setTimeout(()=>{switchAutomationTab?.('runs');const status=document.getElementById('automation-run-status');if(status)status.value='failed';loadAutomationRuns?.();},100);return;}if(target==='morning_briefing'){navigateTo('intelligence');setTimeout(()=>{openTaskCreator?.();const input=document.getElementById('natural-task-prompt');if(input){input.value='每天早上 08:00 生成个人早间简报，内容包括 AI、科技、创业方向最新重要信息，去重后输出 5 条，结果发送到当前 Web 会话。';input.dispatchEvent(new Event('input',{bubbles:true}));parseNaturalTask?.();}},120);return;}if(target==='network-search'){navigateTo('common-functions');setTimeout(()=>openCommonFunction('network-search'),80);return;}if(target==='templates'){navigateTo('intelligence');setTimeout(()=>switchAutomationTab?.('templates'),100);return;}openCommonCapabilityTarget(target);}
-function refreshCommonSuggestionBlocks(data){commonCapabilitySuggestions=data.suggestions||commonCapabilitySuggestions;document.querySelectorAll('#welcome-suggestion-content').forEach(node=>node.innerHTML=renderCommonSuggestions(commonCapabilitySuggestions,true));document.querySelectorAll('#common-capability-overview-actions').forEach(node=>{const quick=(data.quick_actions||[]).map(item=>`<button onclick="openCommonCapabilityTarget('${escapeHtml(item.target||'')}')" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-xs"><i class="fas ${escapeHtml(item.icon||'fa-bolt')} mr-1"></i>${escapeHtml(item.label||'快捷动作')}</button>`).join('');node.innerHTML=`<div class="w-full text-xs font-semibold text-slate-500 mb-1"><i class="fas fa-lightbulb text-amber-500 mr-1"></i>今天建议你先做</div><div class="w-full grid sm:grid-cols-2 xl:grid-cols-4 gap-2">${renderCommonSuggestions(commonCapabilitySuggestions,false)}</div><div class="w-full mt-1 flex flex-wrap gap-2">${quick}</div>`;});}
+function refreshCommonSuggestionBlocks(data){commonCapabilitySuggestions=data.suggestions||commonCapabilitySuggestions;document.querySelectorAll('#welcome-suggestion-content').forEach(node=>node.innerHTML=renderWelcomeSuggestions(commonCapabilitySuggestions));document.querySelectorAll('#common-capability-overview-actions').forEach(node=>{const quick=(data.quick_actions||[]).map(item=>`<button onclick="openCommonCapabilityTarget('${escapeHtml(item.target||'')}')" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-xs"><i class="fas ${escapeHtml(item.icon||'fa-bolt')} mr-1"></i>${escapeHtml(item.label||'快捷动作')}</button>`).join('');node.innerHTML=`<div class="w-full text-xs font-semibold text-slate-500 mb-1"><i class="fas fa-lightbulb text-amber-500 mr-1"></i>今天建议你先做</div><div class="w-full grid sm:grid-cols-2 xl:grid-cols-4 gap-2">${renderCommonSuggestions(commonCapabilitySuggestions,false)}</div><div class="w-full mt-1 flex flex-wrap gap-2">${quick}</div>`;});}
 async function updateCommonSuggestionPreference(target,action,event){event?.stopPropagation?.();if(!target)return;try{const response=await fetch('/api/agent/capability-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,action})}),data=await response.json();if(data.status!=='success')throw new Error(data.message||'建议偏好保存失败');refreshCommonSuggestionBlocks(data);_wsToast?.(action==='pin'?'已置顶建议':action==='unpin'?'已取消置顶':action==='dislike'?'后续将减少类似推荐':'已关闭该建议');}catch(error){alert(error.message||String(error));}}
 async function resetCommonSuggestionPreferences(event){event?.stopPropagation?.();try{const response=await fetch('/api/agent/capability-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset'})}),data=await response.json();if(data.status!=='success')throw new Error(data.message||'重置推荐失败');refreshCommonSuggestionBlocks(data);_wsToast?.('推荐偏好已重置');}catch(error){alert(error.message||String(error));}}
 function renderCommonSuggestions(items,compact=false){items=items||[];if(!items.length)return '<div class="rounded-xl border border-dashed border-slate-200 dark:border-white/10 p-3 text-xs text-slate-400">暂无建议，点击刷新能力状态后再看。</div>';const tone={red:'border-red-100 bg-red-50/70 text-red-600 dark:border-red-500/20 dark:bg-red-500/10',cyan:'border-cyan-100 bg-cyan-50/70 text-cyan-600 dark:border-cyan-500/20 dark:bg-cyan-500/10',amber:'border-amber-100 bg-amber-50/70 text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10',blue:'border-blue-100 bg-blue-50/70 text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10',emerald:'border-emerald-100 bg-emerald-50/70 text-emerald-600 dark:border-emerald-500/20 dark:bg-emerald-500/10',indigo:'border-indigo-100 bg-indigo-50/70 text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10',slate:'border-slate-100 bg-slate-50/70 text-slate-600 dark:border-white/10 dark:bg-white/5'};return items.map(item=>{const target=escapeHtml(item.target||''),pinAction=item.pinned?'unpin':'pin',pinTitle=item.pinned?'取消置顶':'置顶',stats=item.stats||{},opens=Number(stats.opens||0),dismisses=Number(stats.dismisses||0)+Number(stats.dislikes||0),success=Number(stats.outcome_success||0),failed=Number(stats.outcome_failed||0),empty=Number(stats.outcome_empty||0),notifyWarn=Number(stats.outcome_notification_warning||0),outcomeText=success||failed||empty||notifyWarn?`成功 ${success} · 空 ${empty} · 失败 ${failed}${notifyWarn?` · 通知异常 ${notifyWarn}`:''}`:'',statText=opens||dismisses?`已点 ${opens} 次${dismisses?` · 已忽略 ${dismisses} 次`:''}`:'';return `<article class="rounded-xl border ${tone[item.tone]||tone.slate} p-3 text-left hover:shadow-sm transition group"><button onclick="openCommonSuggestionTarget('${target}')" class="w-full text-left"><div class="flex items-start justify-between gap-2"><span class="flex items-center gap-2 min-w-0"><i class="fas ${escapeHtml(item.icon||'fa-bolt')}"></i><b class="${compact?'text-xs':'text-sm'} truncate">${escapeHtml(item.title||'建议操作')}</b>${item.pinned?'<span class="shrink-0 rounded-full bg-white/70 dark:bg-black/10 px-1.5 py-0.5 text-[10px] text-amber-500">置顶</span>':''}</span><i class="fas fa-arrow-right text-[10px] opacity-50 mt-1"></i></div><p class="mt-1 ${compact?'text-[11px]':'text-xs'} leading-5 text-slate-500 dark:text-slate-300 line-clamp-2">${escapeHtml(item.summary||'')}</p><div class="mt-2 flex flex-wrap gap-1.5">${item.reason?`<span class="inline-flex items-center rounded-full bg-white/70 dark:bg-black/10 px-2 py-0.5 text-[10px] text-slate-400"><i class="fas fa-circle-info mr-1"></i>${escapeHtml(item.reason)}</span>`:''}${statText?`<span class="inline-flex items-center rounded-full bg-white/70 dark:bg-black/10 px-2 py-0.5 text-[10px] text-primary-500"><i class="fas fa-chart-simple mr-1"></i>${escapeHtml(statText)}</span>`:''}${outcomeText?`<span class="inline-flex items-center rounded-full bg-white/70 dark:bg-black/10 px-2 py-0.5 text-[10px] ${failed||empty?'text-orange-500':'text-emerald-500'}"><i class="fas fa-check-double mr-1"></i>${escapeHtml(outcomeText)}</span>`:''}</div></button><div class="mt-2 flex flex-wrap gap-1.5 opacity-80"><button onclick="updateCommonSuggestionPreference('${target}','${pinAction}',event)" class="px-2 py-0.5 rounded-md bg-white/70 dark:bg-black/10 text-[10px] text-slate-500 hover:text-primary-500"><i class="fas fa-thumbtack mr-1"></i>${pinTitle}</button><button onclick="updateCommonSuggestionPreference('${target}','dislike',event)" class="px-2 py-0.5 rounded-md bg-white/70 dark:bg-black/10 text-[10px] text-slate-500 hover:text-orange-500">不感兴趣</button><button onclick="updateCommonSuggestionPreference('${target}','dismiss',event)" class="px-2 py-0.5 rounded-md bg-white/70 dark:bg-black/10 text-[10px] text-slate-500 hover:text-red-500">关闭</button></div></article>`;}).join('');}
@@ -3140,7 +3154,31 @@ async function loadCommonCapabilityOverview(force=false){
         host.innerHTML=`<div class="md:col-span-2 xl:col-span-3 rounded-xl bg-orange-50 dark:bg-orange-500/10 p-3 text-sm text-orange-600">能力状态读取失败：${escapeHtml(error.message||String(error))}</div>`;
     }
 }
-async function loadWelcomeCapabilityOverview(force=false){const host=document.getElementById('welcome-capability-content'),subtitle=document.getElementById('welcome-capability-subtitle'),suggestions=document.getElementById('welcome-suggestion-content');if(!host)return;if(force||!host.dataset.loaded){host.innerHTML='<div class="sm:col-span-2 lg:col-span-3 text-xs text-primary-500"><i class="fas fa-spinner fa-spin mr-1"></i>正在刷新能力状态…</div>';}try{const data=await apiFetch('/api/agent/capability-summary');const cards=(data.cards||[]).slice(0,6);commonCapabilitySuggestions=data.suggestions||[];if(subtitle)subtitle.textContent=`${data.overall==='success'?'整体可用':data.overall==='error'?'有能力需要处理':'部分能力需关注'} · 下方已给出建议动作`;host.dataset.loaded='1';host.innerHTML=cards.map(card=>`<button onclick="openCommonCapabilityTarget('${escapeHtml(card.target||'')}')" class="rounded-xl border border-slate-100 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.03] p-3 text-left hover:border-primary-300 transition"><div class="flex items-center justify-between gap-2"><span class="inline-flex items-center gap-2 min-w-0"><i class="fas ${escapeHtml(card.icon||'fa-circle')} text-primary-500"></i><b class="text-xs truncate">${escapeHtml(card.title||'能力')}</b></span><span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] ${commonCapabilityStatusClass(card.status)}">${escapeHtml(card.label||'待检查')}</span></div><p class="mt-2 text-[11px] leading-5 text-slate-500 line-clamp-2">${escapeHtml(card.summary||'')}</p></button>`).join('');if(suggestions) suggestions.innerHTML=renderCommonSuggestions(commonCapabilitySuggestions,true);}catch(error){if(subtitle)subtitle.textContent='能力状态暂时读取失败，不影响正常对话';host.innerHTML=`<div class="sm:col-span-2 lg:col-span-3 rounded-xl bg-orange-50 dark:bg-orange-500/10 p-3 text-xs text-orange-600">${escapeHtml(error.message||String(error))}</div>`;if(suggestions)suggestions.innerHTML='';}}
+function renderWelcomeSuggestions(items=[]){
+    if(!items.length)return '<div class="sm:col-span-2 lg:col-span-4 text-xs text-slate-400 py-2">暂无建议</div>';
+    const tone={red:'border-red-100 bg-red-50/70 text-red-600',cyan:'border-cyan-100 bg-cyan-50/70 text-cyan-600',amber:'border-amber-100 bg-amber-50/70 text-amber-600',blue:'border-blue-100 bg-blue-50/70 text-blue-600',emerald:'border-emerald-100 bg-emerald-50/70 text-emerald-600',indigo:'border-indigo-100 bg-indigo-50/70 text-indigo-600',slate:'border-slate-100 bg-slate-50/70 text-slate-600'};
+    return items.map(item=>{
+        const detail=[item.summary,item.reason].filter(Boolean).join(' · ');
+        return `<button type="button" onclick="openCommonSuggestionTarget('${escapeHtml(item.target||'')}')" class="welcome-suggestion-card rounded-xl border ${tone[item.tone]||tone.slate} text-left hover:shadow-sm transition dark:bg-white/5 dark:border-white/10"><span class="inline-flex items-center gap-2"><i class="fas ${escapeHtml(item.icon||'fa-bolt')}"></i><b class="text-xs truncate">${escapeHtml(item.title||'建议动作')}</b></span><i class="fas fa-arrow-right text-[10px] opacity-50"></i>${detail?`<span class="welcome-card-tooltip" role="tooltip">${escapeHtml(detail)}</span>`:''}</button>`;
+    }).join('');
+}
+async function loadWelcomeCapabilityOverview(force=false){
+    const host=document.getElementById('welcome-capability-content'),subtitle=document.getElementById('welcome-capability-subtitle'),suggestions=document.getElementById('welcome-suggestion-content');
+    if(!host)return;
+    if(force||!host.dataset.loaded)host.innerHTML='<div class="sm:col-span-2 lg:col-span-3 text-xs text-primary-500"><i class="fas fa-spinner fa-spin mr-1"></i>正在刷新能力状态…</div>';
+    try{
+        const data=await apiFetch('/api/agent/capability-summary'),cards=(data.cards||[]).slice(0,6);
+        commonCapabilitySuggestions=data.suggestions||[];
+        if(subtitle)subtitle.textContent=data.overall==='success'?'整体可用':data.overall==='error'?'有能力需要处理':'部分能力需关注';
+        host.dataset.loaded='1';
+        host.innerHTML=cards.map(card=>`<button type="button" onclick="openCommonCapabilityTarget('${escapeHtml(card.target||'')}')" class="welcome-capability-card rounded-xl border border-slate-100 dark:border-white/10 bg-slate-50/70 dark:bg-white/[0.03] text-left hover:border-primary-300 transition"><span class="flex items-center justify-between gap-2"><span class="inline-flex items-center gap-2 min-w-0"><i class="fas ${escapeHtml(card.icon||'fa-circle')} text-primary-500"></i><b class="text-xs truncate">${escapeHtml(card.title||'能力')}</b></span><span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] ${commonCapabilityStatusClass(card.status)}">${escapeHtml(card.label||'待检查')}</span></span>${card.summary?`<span class="welcome-card-tooltip" role="tooltip">${escapeHtml(card.summary)}</span>`:''}</button>`).join('');
+        if(suggestions)suggestions.innerHTML=renderWelcomeSuggestions(commonCapabilitySuggestions);
+    }catch(error){
+        if(subtitle)subtitle.textContent='能力状态暂时读取失败';
+        host.innerHTML=`<div class="sm:col-span-2 lg:col-span-3 rounded-xl bg-orange-50 dark:bg-orange-500/10 p-3 text-xs text-orange-600">${escapeHtml(error.message||String(error))}</div>`;
+        if(suggestions)suggestions.innerHTML='';
+    }
+}
 function openCommonFunction(id){const section=document.getElementById(`common-function-${id}`);if(!section)return;document.getElementById('common-functions-heading')?.classList.add('hidden');document.getElementById('common-functions-home')?.classList.add('hidden');document.querySelectorAll('section[id^="common-function-"]').forEach(x=>x.classList.add('hidden'));section.classList.remove('hidden');if(id==='network-search')loadNetworkSearchAgent();if(id==='tech-briefing')loadTechBriefing();if(id==='deep-research')loadDeepResearchAgent();if(id==='agent-reach')loadAgentReach();if(id==='quick-learning')loadQuickLearning();if(id==='fast-reading')loadFastReading();if(id==='media-assistant')loadMediaAssistant();if(id==='tool-connector')loadToolConnectorCenter();if(id==='browser-agent')loadBrowserAgent();if(id==='desktop-agent')loadDesktopAgent();if(id==='code-agent')loadCodeAgent();if(id==='ops-agent')loadOpsAgent();if(id==='website-monitor')loadCommonWebsiteMonitor();if(id==='forex-query'){loadForexTasks();loadForexNotificationChannels();updateForexMode();}section.closest('.overflow-y-auto')?.scrollTo({top:0,behavior:'smooth'});}
 function loadQuickLearning(){const status=document.getElementById('quick-learning-status');if(status&&!status.textContent)status.textContent='粘贴公众号文章或网页链接后，点击“立即学习”。';}
 function quickLearningPayload(){return {url:(document.getElementById('quick-learning-url')?.value||'').trim(),goal:(document.getElementById('quick-learning-goal')?.value||'').trim(),modes:[...document.querySelectorAll('.quick-learning-mode:checked')].map(x=>x.value),save_artifact:Boolean(document.getElementById('quick-learning-save-artifact')?.checked)};}
@@ -4214,12 +4252,211 @@ async function archiveArtifactToProject(){const projectId=document.getElementByI
 let projectWorkspaceCache=[],currentProjectWorkspace=null;
 function readProjects(){return projectWorkspaceCache;}
 async function projectWorkspaceRequest(options={}){const response=await fetch('/api/project-workspaces',options);const data=await response.json();if(data.status!=='success')throw new Error(data.message||'项目操作失败');return data;}
-function setSidebarQuickListArrow(button,collapsed){const icon=button?.querySelector(':scope > button i')||button?.querySelector('.ml-auto i');if(!icon)return;icon.classList.toggle('fa-chevron-right',collapsed);icon.classList.toggle('fa-chevron-down',!collapsed);}
+function setSidebarQuickListArrow(button,collapsed){const trigger=button?.querySelector(':scope > button');const icon=trigger?.querySelector('i')||button?.querySelector('.ml-auto i');if(!icon)return;icon.classList.toggle('fa-chevron-right',collapsed);icon.classList.toggle('fa-chevron-down',!collapsed);if(trigger?.classList.contains('sidebar-project-expand')){trigger.setAttribute('aria-expanded',String(!collapsed));trigger.setAttribute('aria-label',collapsed?'展开项目列表':'收起项目列表');trigger.title=collapsed?'展开项目列表':'收起项目列表';}}
 function toggleSidebarQuickList(id,button){const host=document.getElementById(id);if(!host)return;const collapsed=host.classList.toggle('collapsed');setSidebarQuickListArrow(button,collapsed);localStorage.setItem(`cow_${id}_collapsed`,collapsed?'1':'0');}
-function renderSidebarSessionList(){const host=document.getElementById('sidebar-session-list');if(!host)return;host.classList.remove('collapsed');setSidebarQuickListArrow(document.querySelector('.sidebar-item[data-view="chat"]'),true);const latest=(_sessionItems||[])[0];if(!latest){host.innerHTML='<div class="px-2 py-1.5 text-[11px] text-neutral-600">暂无最新会话</div>';return;}const sid=_wsAttr(latest.session_id),title=escapeHtml(latest.title||t('untitled_session'));host.innerHTML=`<div role="button" tabindex="0" class="sidebar-latest-entry ${latest.pinned?'pinned':''}" onclick="switchSession('${sid}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchSession('${sid}')}" title="${title}"><i class="fas ${latest.pinned?'fa-thumbtack':'fa-message'} text-[10px]"></i><span class="quick-title">${title}</span><span class="quick-actions"><button class="sidebar-quick-action" onclick="event.stopPropagation();toggleSessionPin('${sid}')" title="${escapeHtml(t(latest.pinned?'unpin_session':'pin_session'))}"><i class="fas fa-thumbtack text-[9px]"></i></button><button class="sidebar-quick-action" onclick="event.stopPropagation();renameSidebarSession('${sid}')" title="${escapeHtml(t('rename_session'))}"><i class="fas fa-pen text-[9px]"></i></button></span></div>`;}
+function renderSidebarSessionList(){
+    const host=document.getElementById('sidebar-session-list');if(!host)return;
+    host.classList.remove('collapsed');
+    const recent=(_sessionItems||[]).slice(0,3);
+    if(!recent.length){host.innerHTML='<div class="sidebar-recent-empty">暂无会话</div>';return;}
+    host.innerHTML=recent.map(item=>{
+        const sid=_wsAttr(item.session_id),title=escapeHtml(item.title||t('untitled_session'));
+        return `<div role="button" tabindex="0" class="sidebar-latest-entry ${item.pinned?'pinned':''} ${item.session_id===sessionId?'is-current':''}" onclick="switchSession('${sid}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchSession('${sid}')}" title="${title}"><span class="quick-title">${title}</span><span class="quick-actions"><button class="sidebar-quick-action" onclick="event.stopPropagation();toggleSessionPin('${sid}')" title="${escapeHtml(t(item.pinned?'unpin_session':'pin_session'))}"><i class="fas fa-thumbtack text-[9px]"></i></button><button class="sidebar-quick-action" onclick="event.stopPropagation();renameSidebarSession('${sid}')" title="${escapeHtml(t('rename_session'))}"><i class="fas fa-pen text-[9px]"></i></button></span></div>`;
+    }).join('');
+}
 function renameSidebarSession(sid){const entry=_sessionItems.find(s=>s.session_id===sid);if(!entry)return;const oldTitle=entry.title||t('untitled_session'),newTitle=prompt(currentLang==='en'?'Rename conversation':'修改会话标题',oldTitle);if(newTitle===null||!newTitle.trim()||newTitle.trim()===oldTitle)return;entry.title=newTitle.trim();renderSidebarSessionList();fetch(`/api/sessions/${encodeURIComponent(sid)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:entry.title})}).then(r=>r.json()).then(data=>{if(data.status!=='success')throw new Error(data.message||t('session_settings_failed'));_renderSessionList();}).catch(error=>{entry.title=oldTitle;renderSidebarSessionList();_wsToast(error.message||t('session_settings_failed'));});}
-function renderSidebarProjectList(){const host=document.getElementById('sidebar-project-list');if(!host)return;const collapsed=localStorage.getItem('cow_sidebar-project-list_collapsed')==='1';host.classList.toggle('collapsed',collapsed);setSidebarQuickListArrow(document.querySelector('.sidebar-item[data-view="projects"]'),collapsed);host.innerHTML=projectWorkspaceCache.length?projectWorkspaceCache.slice(0,12).map(p=>`<button class="sidebar-quick-entry ${p.pinned?'pinned':''}" onclick="openSidebarProject('${p.id}')"><i class="fas ${p.pinned?'fa-thumbtack':'fa-folder'} text-[10px]"></i><span class="quick-title">${escapeHtml(p.name)}</span><span class="quick-pin" onclick="event.stopPropagation();toggleProjectPin('${p.id}')"><i class="fas fa-thumbtack text-[9px]"></i></span></button>`).join(''):'<div class="px-2 py-2 text-[11px] text-neutral-600">暂无项目</div>';}
+const SIDEBAR_SPACE_CLOSED_KEY='cow_sidebar_space_closed';
+const SIDEBAR_SPACE_HIDDEN_KEY='cow_sidebar_space_hidden';
+let sidebarTaskBatchMode=false;
+const sidebarTaskSelected=new Set();
+function closeSidebarTaskMenu(){document.getElementById('sidebar-task-menu')?.remove();}
+function openSidebarTaskMenu(event,sid){
+    event.preventDefault();event.stopPropagation();closeSidebarSpaceMenu();closeSidebarTaskMenu();
+    const entry=_sessionItems.find(s=>s.session_id===sid);if(!entry)return;
+    const rect=event.currentTarget.getBoundingClientRect(),menu=document.createElement('div');
+    menu.id='sidebar-task-menu';menu.className='sidebar-space-menu sidebar-task-menu';
+    menu.style.left=`${Math.max(8,Math.min(rect.right-50,innerWidth-190))}px`;
+    menu.style.top=`${Math.max(8,Math.min(rect.bottom+3,innerHeight-326))}px`;
+    menu.innerHTML=`<button data-action="pin"><i class="fas fa-thumbtack"></i>${entry.pinned?'取消置顶':'置顶'}</button><button data-action="rename"><i class="fas fa-pen"></i>重命名</button><button data-action="share"><i class="fas fa-share-nodes"></i>分享任务</button><div class="sidebar-task-menu-divider"></div><button data-action="window"><i class="far fa-window-maximize"></i>在独立窗口中打开</button><button data-action="folder"><i class="far fa-folder"></i>打开文件夹</button><button data-action="batch"><i class="fas fa-list-check"></i>批量操作</button><div class="sidebar-task-menu-divider"></div><button data-action="archive"><i class="fas fa-box-archive"></i>归档</button><button data-action="delete" class="danger"><i class="far fa-trash-can"></i>删除任务</button>`;
+    menu.addEventListener('click',event=>{const action=event.target.closest('button')?.dataset.action;if(!action)return;event.stopPropagation();closeSidebarTaskMenu();handleSidebarTaskAction(action,sid);});
+    document.body.appendChild(menu);
+}
+function openSidebarProjectTaskMenu(event,projectId,taskId){
+    event.preventDefault();event.stopPropagation();closeSidebarSpaceMenu();closeSidebarTaskMenu();
+    const project=projectWorkspaceCache.find(p=>p.id===projectId),task=project?.tasks?.find(t=>t.id===taskId);if(!task)return;
+    const rect=event.currentTarget.getBoundingClientRect(),menu=document.createElement('div');menu.id='sidebar-task-menu';menu.className='sidebar-space-menu sidebar-task-menu';
+    menu.style.left=`${Math.max(8,Math.min(rect.right-50,innerWidth-190))}px`;menu.style.top=`${Math.max(8,Math.min(rect.bottom+3,innerHeight-326))}px`;
+    menu.innerHTML=`<button data-action="pin"><i class="fas fa-thumbtack"></i>${task.pinned?'取消置顶':'置顶'}</button><button data-action="rename"><i class="fas fa-pen"></i>重命名</button><button data-action="share"><i class="fas fa-share-nodes"></i>分享任务</button><div class="sidebar-task-menu-divider"></div><button data-action="window"><i class="far fa-window-maximize"></i>在独立窗口中打开</button><button data-action="folder"><i class="far fa-folder"></i>打开文件夹</button><button data-action="batch"><i class="fas fa-list-check"></i>批量操作</button><div class="sidebar-task-menu-divider"></div><button data-action="archive"><i class="fas fa-box-archive"></i>归档</button><button data-action="delete" class="danger"><i class="far fa-trash-can"></i>删除任务</button>`;
+    menu.addEventListener('click',event=>{const action=event.target.closest('button')?.dataset.action;if(!action)return;event.stopPropagation();closeSidebarTaskMenu();handleSidebarProjectTaskAction(action,projectId,taskId);});document.body.appendChild(menu);
+}
+async function updateSidebarProjectTask(projectId,taskId,payload){
+    const data=await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update_task',id:projectId,task_id:taskId,...payload})});
+    const index=projectWorkspaceCache.findIndex(p=>p.id===projectId);if(index>=0)projectWorkspaceCache[index]=data.project;
+    if(currentProjectWorkspace?.id===projectId){currentProjectWorkspace=data.project;renderProjectWorkspace();}
+    renderSidebarProjectList();return data.project;
+}
+async function handleSidebarProjectTaskAction(action,projectId,taskId){
+    const project=projectWorkspaceCache.find(p=>p.id===projectId),task=project?.tasks?.find(t=>t.id===taskId);if(!task)return;
+    const key=`project:${projectId}:${taskId}`;
+    try{
+        if(action==='pin'){await updateSidebarProjectTask(projectId,taskId,{pinned:!task.pinned});return;}
+        if(action==='rename'){const name=prompt('重命名任务',task.name);if(name?.trim())await updateSidebarProjectTask(projectId,taskId,{name:name.trim()});return;}
+        if(action==='archive'){await updateSidebarProjectTask(projectId,taskId,{status:'archived'});_wsToast('任务已归档，可在空间标题旁查看');return;}
+        if(action==='delete'){if(!confirm(`确定删除任务“${task.name}”吗？此操作无法撤销。`))return;const data=await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete_task',id:projectId,task_id:taskId})});projectWorkspaceCache=projectWorkspaceCache.map(p=>p.id===projectId?data.project:p);if(currentProjectWorkspace?.id===projectId){currentProjectWorkspace=data.project;renderProjectWorkspace();}renderSidebarProjectList();return;}
+        if(action==='batch'){sidebarTaskBatchMode=true;sidebarTaskSelected.add(key);renderSidebarProjectList();return;}
+        const link=`${location.origin}${location.pathname}?project_task=${encodeURIComponent(key)}`;
+        if(action==='share'){try{await navigator.clipboard.writeText(link);_wsToast('任务链接已复制');}catch(_){prompt('复制任务链接',link);}return;}
+        if(action==='window'){const opened=window.open(link,'_blank','popup,width=1100,height=760');if(!opened)_wsToast('浏览器阻止了打开新窗口');return;}
+        if(action==='folder'){
+            let path=project.workspace_path;
+            if(!path){const data=await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'ensure_chat_space',id:projectId})});path=data.project.workspace_path;projectWorkspaceCache=projectWorkspaceCache.map(p=>p.id===projectId?data.project:p);}
+            if(window.electronAPI?.openPath){const error=await window.electronAPI.openPath(path);if(error)throw new Error(error);}
+            else{await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'open_folder',id:projectId})});}
+        }
+    }catch(error){_wsToast(error.message||'操作失败');}
+}
+document.addEventListener('click',event=>{if(!event.target.closest('#sidebar-task-menu,.sidebar-task-more'))closeSidebarTaskMenu();});
+async function handleSidebarTaskAction(action,sid){
+    if(action==='pin'){toggleSessionPin(sid);return;}
+    if(action==='rename'){renameSidebarSession(sid);return;}
+    if(action==='delete'){deleteSession(sid);return;}
+    if(action==='archive'){await setSidebarTaskArchived(sid,true);return;}
+    if(action==='batch'){sidebarTaskBatchMode=true;sidebarTaskSelected.add(sid);renderSidebarProjectList();return;}
+    const link=`${location.origin}${location.pathname}?session=${encodeURIComponent(sid)}`;
+    if(action==='share'){try{await navigator.clipboard.writeText(link);_wsToast('任务链接已复制');}catch(_){prompt('复制任务链接',link);}return;}
+    if(action==='window'){const opened=window.open(link,'_blank','popup,width=1100,height=760');if(!opened)_wsToast('浏览器阻止了打开新窗口');return;}
+    if(action==='folder'){
+        const entry=_sessionItems.find(s=>s.session_id===sid);
+        if(!entry?.project?.path){_wsToast('该任务未关联文件夹');return;}
+        try{
+            if(window.electronAPI?.openPath){const error=await window.electronAPI.openPath(entry.project.path);if(error)throw new Error(error);}
+            else{const response=await fetch(`/api/sessions/${encodeURIComponent(sid)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'open_folder'})});const data=await response.json();if(data.status!=='success')throw new Error(data.message||'无法打开文件夹');}
+        }catch(error){_wsToast(error.message||'无法打开文件夹');}
+    }
+}
+async function setSidebarTaskArchived(sid,archived){
+    try{
+        const response=await fetch(`/api/sessions/${encodeURIComponent(sid)}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({archived})});
+        const data=await response.json();if(data.status!=='success')throw new Error(data.message||'操作失败');
+        sidebarTaskSelected.delete(sid);
+        if(archived&&sid===sessionId){const wasOpen=sessionPanelOpen;newChat(false,false);if(!wasOpen&&sessionPanelOpen)closeSessionPanel();}
+        else loadSessionList();
+        if(!archived)showArchivedSpaceTasks();
+        _wsToast(archived?'任务已归档，可在空间标题旁查看':'任务已恢复');
+    }catch(error){_wsToast(error.message||'操作失败');}
+}
+function toggleSidebarTaskSelection(sid,checked){
+    const selected=checked===undefined?!sidebarTaskSelected.has(sid):checked;
+    selected?sidebarTaskSelected.add(sid):sidebarTaskSelected.delete(sid);
+    renderSidebarProjectList();
+}
+function renderSidebarTaskBatchBar(){
+    const bar=document.getElementById('sidebar-task-batch-bar');if(!bar)return;
+    bar.classList.toggle('hidden',!sidebarTaskBatchMode);
+    if(!sidebarTaskBatchMode)return;
+    bar.innerHTML=`<span>已选 ${sidebarTaskSelected.size} 项</span><button onclick="runSidebarTaskBatch('pin')" ${sidebarTaskSelected.size?'':'disabled'}>置顶</button><button onclick="runSidebarTaskBatch('archive')" ${sidebarTaskSelected.size?'':'disabled'}>归档</button><button class="danger" onclick="runSidebarTaskBatch('delete')" ${sidebarTaskSelected.size?'':'disabled'}>删除</button><button onclick="sidebarTaskBatchMode=false;sidebarTaskSelected.clear();renderSidebarProjectList()">取消</button>`;
+}
+async function runSidebarTaskBatch(action){
+    const ids=[...sidebarTaskSelected];if(!ids.length)return;
+    if(action==='delete'&&!confirm(`确定删除选中的 ${ids.length} 个任务吗？此操作无法撤销。`))return;
+    const failed=[];
+    for(const key of ids){
+        try{
+            if(key.startsWith('project:')){
+                const [,projectId,taskId]=key.split(':'),project=projectWorkspaceCache.find(p=>p.id===projectId),task=project?.tasks?.find(t=>t.id===taskId);
+                if(!task)throw new Error('任务不存在');
+                if(action==='delete'){
+                    const data=await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete_task',id:projectId,task_id:taskId})});
+                    projectWorkspaceCache=projectWorkspaceCache.map(p=>p.id===projectId?data.project:p);
+                    if(currentProjectWorkspace?.id===projectId){currentProjectWorkspace=data.project;renderProjectWorkspace();}
+                }else await updateSidebarProjectTask(projectId,taskId,action==='archive'?{status:'archived'}:{pinned:true});
+            }else{
+                const entry=_sessionItems.find(s=>s.session_id===key),method=action==='delete'?'DELETE':'PUT',body=action==='archive'?{archived:true}:{pinned:true};
+                const response=await fetch(`/api/sessions/${encodeURIComponent(key)}`,{method,headers:{'Content-Type':'application/json'},...(method==='PUT'?{body:JSON.stringify(body)}:{})});
+                const data=await response.json();if(data.status!=='success')throw new Error(data.message||key);
+            }
+        }catch(error){failed.push(error);}
+    }
+    sidebarTaskSelected.clear();sidebarTaskBatchMode=false;
+    if((action==='archive'||action==='delete')&&ids.includes(sessionId)){const wasOpen=sessionPanelOpen;newChat(false,false);if(!wasOpen&&sessionPanelOpen)closeSessionPanel();}else loadSessionList();
+    renderSidebarProjectList();if(failed.length)_wsToast(`${failed.length} 个任务操作失败`);
+}
+async function showArchivedSpaceTasks(){
+    closeSidebarTaskMenu();document.getElementById('sidebar-archive-dialog')?.remove();
+    const dialog=document.createElement('div');dialog.id='sidebar-archive-dialog';dialog.className='sidebar-archive-overlay';dialog.innerHTML='<div class="sidebar-archive-card"><div class="sidebar-archive-head"><strong>已归档任务</strong><button type="button" onclick="document.getElementById(\'sidebar-archive-dialog\')?.remove()" aria-label="关闭">×</button></div><div class="sidebar-archive-list">正在加载…</div></div>';document.body.appendChild(dialog);dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.remove();});
+    try{
+        const items=[];for(let page=1;page<=20;page++){const response=await fetch(`/api/sessions?archived=1&page=${page}&page_size=100`),data=await response.json();if(data.status!=='success')throw new Error(data.message||'读取失败');items.push(...(data.sessions||[]));if(!data.has_more)break;}
+        const projects=(await projectWorkspaceRequest()).projects||[];
+        const projectRows=projects.flatMap(project=>(project.tasks||[]).filter(task=>task.status==='archived').map(task=>`<div class="sidebar-archive-row"><span title="${escapeHtml(task.name)}">${escapeHtml(task.name)} <small>· ${escapeHtml(project.name)}</small></span><button type="button" onclick="restoreSidebarProjectTask('${_wsAttr(project.id)}','${_wsAttr(task.id)}')">恢复</button></div>`));
+        const sessionRows=items.map(item=>{const sid=_wsAttr(item.session_id);return `<div class="sidebar-archive-row"><span title="${escapeHtml(item.title||'未命名任务')}">${escapeHtml(item.title||'未命名任务')}</span><button type="button" onclick="setSidebarTaskArchived('${sid}',false)">恢复</button></div>`;});
+        dialog.querySelector('.sidebar-archive-list').innerHTML=(sessionRows.length||projectRows.length)?[...sessionRows,...projectRows].join(''):'暂无归档任务';
+    }catch(error){dialog.querySelector('.sidebar-archive-list').textContent=error.message||'读取失败';}
+}
+async function restoreSidebarProjectTask(projectId,taskId){try{await updateSidebarProjectTask(projectId,taskId,{status:'restore'});showArchivedSpaceTasks();_wsToast('任务已恢复');}catch(error){_wsToast(error.message||'恢复失败');}}
+function sidebarSpaceClosed(){try{return new Set(JSON.parse(localStorage.getItem(SIDEBAR_SPACE_CLOSED_KEY)||'[]'));}catch(_){return new Set();}}
+function sidebarSpaceHidden(){try{return new Set(JSON.parse(localStorage.getItem(SIDEBAR_SPACE_HIDDEN_KEY)||'[]'));}catch(_){return new Set();}}
+function toggleSidebarSpace(id){const closed=sidebarSpaceClosed();closed.has(id)?closed.delete(id):closed.add(id);localStorage.setItem(SIDEBAR_SPACE_CLOSED_KEY,JSON.stringify([...closed]));renderSidebarProjectList();}
+function toggleAllSidebarSpaces(){const visible=projectWorkspaceCache.filter(p=>!sidebarSpaceHidden().has(p.id)),closed=sidebarSpaceClosed(),allClosed=visible.length&&visible.every(p=>closed.has(p.id));visible.forEach(p=>allClosed?closed.delete(p.id):closed.add(p.id));localStorage.setItem(SIDEBAR_SPACE_CLOSED_KEY,JSON.stringify([...closed]));renderSidebarProjectList();}
+function toggleSidebarSpaceVisibility(id){const hidden=sidebarSpaceHidden();hidden.has(id)?hidden.delete(id):hidden.add(id);localStorage.setItem(SIDEBAR_SPACE_HIDDEN_KEY,JSON.stringify([...hidden]));closeSidebarSpaceMenu();renderSidebarProjectList();}
+function chooseSpaceTaskMode(button){button.parentElement.querySelectorAll('button').forEach(item=>item.classList.toggle('active',item===button));}
+function prefillSpaceTask(label){chatInput.value=label==='定时任务'?'帮我创建一个定时任务：':`帮我${label}：`;chatInput.dispatchEvent(new Event('input',{bubbles:true}));chatInput.focus();}
+async function createSidebarSpaceTask(id){
+    try{
+        const result=await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'ensure_chat_space',id})});
+        const index=projectWorkspaceCache.findIndex(p=>p.id===id);
+        if(index>=0)projectWorkspaceCache[index]=result.project;
+        const wasOpen=sessionPanelOpen;
+        const filesWereOpen=!document.getElementById('workspace-panel')?.classList.contains('hidden');
+        if(await newChatInSpace(result.project.workspace_path)===false)throw new Error('无法将新任务关联到空间');
+        if(!wasOpen&&sessionPanelOpen)closeSessionPanel();
+        if(!filesWereOpen&&typeof closeWorkspacePanel==='function')closeWorkspacePanel(false);
+        const main=document.getElementById('chat-main'),welcome=document.getElementById('welcome-screen');
+        if(main&&welcome){
+            main.classList.add('space-new-chat');
+            welcome.innerHTML=`<h1>WorkBuddy, 我帮你</h1><div class="space-new-chat-modes"><button type="button" class="active" onclick="chooseSpaceTaskMode(this)">办公</button><button type="button" onclick="chooseSpaceTaskMode(this)">开发</button><button type="button" onclick="chooseSpaceTaskMode(this)">设计</button></div><div class="space-new-chat-prompts">${['创作文档','分析数据','制作PPT','深度研究','策划方案','定时任务'].map(label=>`<button type="button" onclick="prefillSpaceTask('${label}')">${label}</button>`).join('')}</div>`;
+            let label=main.querySelector('.space-new-chat-location');
+            if(!label){label=document.createElement('button');label.type='button';label.className='space-new-chat-location';document.querySelector('#chat-composer-surface .chat-composer-width')?.appendChild(label);}
+            label.innerHTML=`<i class="far fa-folder"></i> ${escapeHtml(result.project.name)} <i class="fas fa-chevron-down"></i>`;
+            label.onclick=event=>toggleWorkspaceSelector(event);
+        }
+        const closed=sidebarSpaceClosed();
+        if(closed.delete(id))localStorage.setItem(SIDEBAR_SPACE_CLOSED_KEY,JSON.stringify([...closed]));
+        renderSidebarProjectList();
+        chatInput.focus();
+    }catch(error){_wsToast(error.message||'无法新建空间任务');}
+}
+async function renameSidebarSpace(id){const project=projectWorkspaceCache.find(p=>p.id===id);if(!project)return;const name=prompt('重命名空间',project.name);if(name===null||!name.trim()||name.trim()===project.name)return;try{const result=await projectWorkspaceRequest({method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,name:name.trim()})});if(currentProjectWorkspace?.id===id){currentProjectWorkspace=result.project;renderProjectWorkspace();}await loadSidebarProjects();if(currentView==='projects')await renderProjects(document.getElementById('project-search')?.value||'');}catch(error){_wsToast(error.message||'重命名失败');}}
+function closeSidebarSpaceMenu(){document.getElementById('sidebar-space-menu')?.remove();}
+function openSidebarSpaceMenu(event,id){event.stopPropagation();closeSidebarSpaceMenu();const anchor=event.currentTarget,rect=anchor.getBoundingClientRect(),menu=document.createElement('div');menu.id='sidebar-space-menu';menu.className='sidebar-space-menu';menu.style.left=`${Math.max(8,Math.min(rect.right-25,window.innerWidth-188))}px`;menu.style.top=`${Math.min(rect.bottom+3,window.innerHeight-130)}px`;menu.innerHTML='<button type="button" data-action="open"><i class="far fa-folder-open"></i>打开文件夹</button><button type="button" data-action="rename"><i class="fas fa-pen"></i>重命名</button><button type="button" data-action="remove"><i class="far fa-trash-can"></i>从列表中移除</button>';menu.addEventListener('click',e=>{const action=e.target.closest('button')?.dataset.action;if(!action)return;closeSidebarSpaceMenu();if(action==='open')openSidebarProject(id);if(action==='rename')renameSidebarSpace(id);if(action==='remove')toggleSidebarSpaceVisibility(id);});document.body.appendChild(menu);}
+document.addEventListener('click',event=>{if(!event.target.closest('#sidebar-space-menu,.sidebar-space-more'))closeSidebarSpaceMenu();});
+function syncSidebarSpaceVisibilityControls(){const hidden=sidebarSpaceHidden();document.querySelectorAll('#projects-list article').forEach(card=>{const opener=card.querySelector('button[onclick^="openProjectWorkspace("]'),match=opener?.getAttribute('onclick')?.match(/openProjectWorkspace\('([^']+)'\)/);if(!match)return;const id=match[1];let control=card.querySelector('.project-sidebar-visibility');if(!control){control=document.createElement('button');control.type='button';control.className='project-sidebar-visibility px-2 py-1 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10';card.firstElementChild?.appendChild(control);}control.textContent=hidden.has(id)?'加入侧栏':'从侧栏移除';control.onclick=()=>toggleSidebarSpaceVisibility(id);});}
+function sidebarSpaceDate(value){if(!value)return '';const date=new Date(typeof value==='number'&&value<1e12?value*1000:value);return Number.isNaN(date.getTime())?'':`${date.getMonth()+1}月${date.getDate()}日`;}
+function sidebarSpaceIsToday(value){if(!value)return false;const date=new Date(typeof value==='number'&&value<1e12?value*1000:value),today=new Date();return !Number.isNaN(date.getTime())&&date.toDateString()===today.toDateString();}
+function renderSidebarProjectList(){
+    const host=document.getElementById('sidebar-project-list');if(!host)return;
+    const visible=projectWorkspaceCache.filter(p=>!sidebarSpaceHidden().has(p.id));
+    const count=document.getElementById('sidebar-space-count');if(count)count.textContent=`(${visible.length})`;
+    const closed=sidebarSpaceClosed(),allClosed=!!visible.length&&visible.every(p=>closed.has(p.id));
+    const collapseButton=document.querySelector('.sidebar-space-collapse-all');if(collapseButton){collapseButton.title=allClosed?'展开所有空间':'折叠所有空间';collapseButton.setAttribute('aria-label',collapseButton.title);}
+    host.innerHTML=visible.length?visible.map(p=>{
+        const id=_wsAttr(p.id),sessions=(_sessionItems||[]).filter(s=>s.project&&(s.project.id===p.id||(p.workspace_path&&s.project.path===p.workspace_path)||s.project.name===p.name));
+        const tasks=(p.tasks||[]).filter(task=>task.status!=='archived').sort((a,b)=>Number(!!b.pinned)-Number(!!a.pinned)),active=sessions.some(s=>s.session_id===sessionId)||currentProjectWorkspace?.id===p.id;
+        const children=[...sessions.map(s=>({kind:'session',id:s.session_id,title:s.title||t('untitled_session'),date:s.last_active,active:s.session_id===sessionId||sidebarSpaceIsToday(s.last_active),pinned:!!s.pinned})),...tasks.map(task=>({kind:'task',id:task.id,title:task.name,date:task.updated_at||task.created_at,active:task.status==='doing'||task.status==='running'||sidebarSpaceIsToday(task.updated_at||task.created_at),pinned:!!task.pinned}))].sort((a,b)=>Number(b.pinned)-Number(a.pinned));
+        const rows=closed.has(p.id)?'':children.map(item=>{
+            const childId=_wsAttr(item.id),title=escapeHtml(item.title||'未命名');
+            const action=item.kind==='session'?`switchSession('${childId}');navigateTo('chat')`:`openSidebarProjectTask('${id}','${childId}')`;
+            const key=item.kind==='session'?childId:`project:${id}:${childId}`;
+            const select=sidebarTaskBatchMode?`<input type="checkbox" class="sidebar-task-select" aria-label="选择${title}" ${sidebarTaskSelected.has(key)?'checked':''} onclick="event.stopPropagation();toggleSidebarTaskSelection('${key}',this.checked)">`:'';
+            const more=`<button type="button" class="sidebar-task-more" title="${title}更多操作" aria-label="${title}更多操作" onclick="${item.kind==='session'?`openSidebarTaskMenu(event,'${childId}')`:`openSidebarProjectTaskMenu(event,'${id}','${childId}')`}"><i class="fas fa-ellipsis"></i></button>`;
+            return `<div role="button" tabindex="0" class="sidebar-space-child ${item.kind==='session'&&item.id===sessionId?'is-active':''} ${item.pinned?'is-pinned':''}" title="${title}" onclick="${sidebarTaskBatchMode?`toggleSidebarTaskSelection('${key}')`:action}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.click()}">${select}${item.pinned?'<i class="fas fa-thumbtack sidebar-task-pinned"></i>':''}<span class="sidebar-space-child-title">${title}</span>${item.active?'<span class="sidebar-space-dot" aria-label="今日更新或当前"></span>':`<span class="sidebar-space-date">${sidebarSpaceDate(item.date)}</span>`}${more}</div>`;
+        }).join('');
+        return `<div class="sidebar-space-group"><div class="sidebar-space-folder-row"><button type="button" class="sidebar-space-folder-toggle" onclick="toggleSidebarSpace('${id}')" aria-label="${closed.has(p.id)?'展开':'收起'}${escapeHtml(p.name)}" aria-expanded="${!closed.has(p.id)}"><i class="far ${closed.has(p.id)?'fa-folder':'fa-folder-open'}"></i></button><button type="button" class="sidebar-space-folder-name" onclick="openSidebarProject('${id}')" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</button>${active?'<span class="sidebar-space-dot" aria-label="当前项目"></span>':''}<span class="sidebar-space-folder-actions"><button type="button" onclick="createSidebarSpaceTask('${id}')" title="新建任务" aria-label="新建任务"><i class="far fa-square-plus"></i></button><button type="button" class="sidebar-space-more" onclick="openSidebarSpaceMenu(event,'${id}')" title="更多操作" aria-label="${escapeHtml(p.name)}更多操作"><i class="fas fa-ellipsis"></i></button></span></div>${rows?`<div class="sidebar-space-children">${rows}</div>`:''}</div>`;
+    }).join(''):'<div class="sidebar-space-empty">暂无空间</div>';
+    renderSidebarTaskBatchBar();
+    syncSidebarSpaceVisibilityControls();
+}
 async function openSidebarProject(id){navigateTo('projects');await openProjectWorkspace(id);}
+async function openSidebarProjectTask(projectId,taskId){await openSidebarProject(projectId);switchProjectTab('tasks');const card=document.querySelector(`#project-detail-tasks [data-project-task-id="${CSS.escape(taskId)}"]`);card?.scrollIntoView({block:'center'});}
 async function toggleProjectPin(id){const item=projectWorkspaceCache.find(x=>x.id===id);if(!item)return;await projectWorkspaceRequest({method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,pinned:!item.pinned})});await renderProjects(document.getElementById('project-search')?.value||'');}
 async function loadSidebarProjects(){try{projectWorkspaceCache=(await projectWorkspaceRequest()).projects||[];renderSidebarProjectList();}catch(_){}}
 async function renderProjects(query=''){const host=document.getElementById('projects-list'),templates=document.getElementById('project-templates');if(!host||!templates)return;try{projectWorkspaceCache=(await projectWorkspaceRequest()).projects||[];}catch(error){host.innerHTML=`<div class="text-red-500">${escapeHtml(error.message)}</div>`;return;}const q=(query||'').trim().toLowerCase(),items=projectWorkspaceCache.filter(x=>!q||`${x.name} ${x.description}`.toLowerCase().includes(q));host.innerHTML=items.length?items.map(x=>`<article class="rounded-2xl border border-slate-200 dark:border-white/10 p-5 bg-white dark:bg-[#1a1a1a]"><div class="flex items-start gap-3"><div class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/10 flex items-center justify-center"><i class="fas fa-diagram-project"></i></div><button onclick="openProjectWorkspace('${x.id}')" class="flex-1 text-left"><h3 class="font-semibold">${x.pinned?'<i class="fas fa-thumbtack text-primary-500 text-xs mr-2"></i>':''}${escapeHtml(x.name)}</h3><p class="text-xs text-slate-400 mt-1 line-clamp-2">${escapeHtml(x.description||'暂无说明')}</p><span class="text-[10px] text-slate-400 mt-3 block">${(x.tasks||[]).length} 个任务 · ${(x.assets||[]).length} 份资料</span></button><button onclick="toggleProjectPin('${x.id}')" title="${x.pinned?'取消置顶':'置顶'}" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 ${x.pinned?'text-primary-500':'text-slate-400'}"><i class="fas fa-thumbtack text-xs"></i></button><button onclick="deleteProjectWorkspace('${x.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400"><i class="fas fa-trash-can text-xs"></i></button></div></article>`).join(''):'<div class="sm:col-span-2 lg:col-span-3 xl:col-span-4 py-10 text-center rounded-2xl border border-dashed border-slate-200 dark:border-white/10 text-slate-400"><i class="fas fa-folder-plus text-2xl block mb-2"></i>暂无项目，点击“新建项目”开始</div>';templates.innerHTML=PROJECT_TEMPLATES.map((x,i)=>`<button onclick="createProjectFromTemplate(${i})" class="rounded-2xl border border-slate-200 dark:border-white/10 p-5 bg-white dark:bg-[#1a1a1a] text-left hover:border-slate-400"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/10 flex items-center justify-center"><i class="fas ${x[2]}"></i></div><div><h3 class="font-semibold">${x[0]}</h3><p class="text-xs text-slate-400 mt-1">${x[1]}</p></div></div></button>`).join('');renderSidebarProjectList();}
@@ -4227,19 +4464,19 @@ function openProjectCreator(){const modal=document.getElementById('project-creat
 function closeProjectCreator(){const modal=document.getElementById('project-creator-modal');modal.classList.add('hidden');modal.classList.remove('flex');}
 async function createProject(){const name=document.getElementById('project-name').value.trim(),description=document.getElementById('project-description').value.trim();if(!name)return document.getElementById('project-name').focus();await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,description,instruction:`你正在参与项目“${name}”。请始终围绕项目目标工作，并将关键结论整理为可复用产物。`})});document.getElementById('project-name').value='';document.getElementById('project-description').value='';closeProjectCreator();renderProjects();}
 function createProjectFromTemplate(index){const item=PROJECT_TEMPLATES[index];document.getElementById('project-name').value=item[0];document.getElementById('project-description').value=item[1];openProjectCreator();}
-async function openProjectWorkspace(id){const data=await projectWorkspaceRequest();currentProjectWorkspace=(data.projects||[]).find(x=>x.id===id);if(!currentProjectWorkspace)return;document.getElementById('project-list-panel').classList.add('hidden');document.getElementById('project-detail-panel').classList.remove('hidden');renderProjectWorkspace();}
+async function openProjectWorkspace(id){const data=await projectWorkspaceRequest();currentProjectWorkspace=(data.projects||[]).find(x=>x.id===id);if(!currentProjectWorkspace)return;document.getElementById('project-list-panel').classList.add('hidden');document.getElementById('project-detail-panel').classList.remove('hidden');renderProjectWorkspace();renderSidebarProjectList();}
 function closeProjectWorkspace(){currentProjectWorkspace=null;document.getElementById('project-list-panel').classList.remove('hidden');document.getElementById('project-detail-panel').classList.add('hidden');renderProjects(document.getElementById('project-search')?.value||'');}
 function switchProjectTab(tab){document.querySelectorAll('.project-pane').forEach(x=>x.classList.toggle('hidden',x.id!==`project-pane-${tab}`));document.querySelectorAll('.project-tab').forEach(x=>{const active=x.dataset.projectTab===tab;x.classList.toggle('bg-white',active);x.classList.toggle('dark:bg-[#292929]',active);x.classList.toggle('shadow-sm',active);});if(tab==='collaboration')loadProjectCollaboration();}
 function renderProjectWorkspace(){const p=currentProjectWorkspace;if(!p)return;document.getElementById('project-detail-name').textContent=p.name;document.getElementById('project-detail-description').textContent=p.description||'暂无项目说明';document.getElementById('project-overview-instruction').textContent=p.instruction||'尚未设置项目指令';document.getElementById('project-overview-stats').innerHTML=[['任务',(p.tasks||[]).length],['资料',(p.assets||[]).length],['专家',(p.experts||[]).length],['自动化',(p.automations||[]).length]].map(x=>`<div class="rounded-xl bg-slate-50 dark:bg-white/5 p-3"><span class="text-xs text-slate-400">${x[0]}</span><b class="text-xl block mt-1">${x[1]}</b></div>`).join('');renderProjectTasks();renderProjectKnowledge();document.getElementById('project-setting-name').value=p.name;document.getElementById('project-setting-description').value=p.description||'';document.getElementById('project-setting-instruction').value=p.instruction||'';document.getElementById('project-setting-model').value=p.model||'';document.getElementById('project-setting-approval').value=p.approval_policy||'risk_based';renderProjectCapabilityOptions();}
-function renderProjectTasks(){const p=currentProjectWorkspace,items=p?.tasks||[];const html=items.length?items.map(x=>`<div class="w-full rounded-xl border p-4 flex gap-3"><button onclick="startProjectTask('${x.id}')" class="flex-1 text-left"><span class="text-xs text-primary-500">${escapeHtml(x.status||'todo')}</span><b class="block mt-1">${escapeHtml(x.name)}</b><p class="text-sm text-slate-500 mt-2 line-clamp-2">${escapeHtml(x.content||'暂无任务内容')}</p><span class="text-[10px] text-slate-400 mt-2 block">${escapeHtml(x.updated_at||x.created_at||'')}</span></button><button onclick="openProjectTaskEditor('${x.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400"><i class="fas fa-pen text-xs"></i></button><button onclick="deleteProjectTask('${x.id}')" class="w-8 h-8 rounded-lg hover:bg-red-50 text-red-400"><i class="fas fa-trash-can text-xs"></i></button></div>`).join(''):'<div class="py-8 text-center text-slate-400">还没有项目任务</div>';document.getElementById('project-detail-tasks').innerHTML=html;document.getElementById('project-overview-tasks').innerHTML=html;}
+function renderProjectTasks(){const p=currentProjectWorkspace,items=p?.tasks||[];const html=items.length?items.map(x=>`<div data-project-task-id="${_wsAttr(x.id)}" class="w-full rounded-xl border p-4 flex gap-3"><button onclick="startProjectTask('${x.id}')" class="flex-1 text-left"><span class="text-xs text-primary-500">${escapeHtml(x.status||'todo')}</span><b class="block mt-1">${escapeHtml(x.name)}</b><p class="text-sm text-slate-500 mt-2 line-clamp-2">${escapeHtml(x.content||'暂无任务内容')}</p><span class="text-[10px] text-slate-400 mt-2 block">${escapeHtml(x.updated_at||x.created_at||'')}</span></button><button onclick="openProjectTaskEditor('${x.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400"><i class="fas fa-pen text-xs"></i></button><button onclick="deleteProjectTask('${x.id}')" class="w-8 h-8 rounded-lg hover:bg-red-50 text-red-400"><i class="fas fa-trash-can text-xs"></i></button></div>`).join(''):'<div class="py-8 text-center text-slate-400">还没有项目任务</div>';document.getElementById('project-detail-tasks').innerHTML=html;document.getElementById('project-overview-tasks').innerHTML=html;}
 function renderProjectCapabilityOptions(){const p=currentProjectWorkspace;document.getElementById('project-expert-options').innerHTML=EXPERTS.slice(0,8).map(x=>projectOption('expert',x.name,(p.experts||[]).includes(x.name))).join('');document.getElementById('project-skill-options').innerHTML=['新闻分析','网页监控','GitHub监控','文档处理','数据分析'].map(x=>projectOption('skill',x,(p.skills||[]).includes(x))).join('');document.getElementById('project-connector-options').innerHTML=CONNECTOR_CATALOG.slice(0,8).map(x=>projectOption('connector',x[1],(p.connectors||[]).includes(x[1]))).join('');}
 function projectOption(type,name,checked){return `<label class="flex items-center gap-2 text-sm"><input type="checkbox" class="project-${type}-check" value="${escapeHtml(name)}" ${checked?'checked':''}>${escapeHtml(name)}</label>`;}
 async function saveProjectWorkspace(){if(!currentProjectWorkspace)return;const values=selector=>[...document.querySelectorAll(selector+':checked')].map(x=>x.value);const payload={id:currentProjectWorkspace.id,name:document.getElementById('project-setting-name').value.trim(),description:document.getElementById('project-setting-description').value.trim(),instruction:document.getElementById('project-setting-instruction').value.trim(),model:document.getElementById('project-setting-model').value.trim(),approval_policy:document.getElementById('project-setting-approval').value,experts:values('.project-expert-check'),skills:values('.project-skill-check'),connectors:values('.project-connector-check')};currentProjectWorkspace=(await projectWorkspaceRequest({method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})).project;await syncProjectConnectorBindings(currentProjectWorkspace.id,payload.connectors);renderProjectWorkspace();}
 function addProjectTask(){openProjectTaskEditor();}
 function openProjectTaskEditor(taskId=''){if(!currentProjectWorkspace)return;const task=(currentProjectWorkspace.tasks||[]).find(x=>x.id===taskId);document.getElementById('project-task-id').value=taskId;document.getElementById('project-task-name').value=task?.name||'';document.getElementById('project-task-content').value=task?.content||'';document.getElementById('project-task-modal-title').textContent=task?'编辑项目任务':'添加项目任务';document.getElementById('project-task-delete').classList.toggle('hidden',!task);const modal=document.getElementById('project-task-modal');modal.classList.remove('hidden');modal.classList.add('flex');setTimeout(()=>document.getElementById('project-task-name').focus(),20);}
 function closeProjectTaskEditor(){const modal=document.getElementById('project-task-modal');modal.classList.add('hidden');modal.classList.remove('flex');}
-async function saveProjectTask(){const taskId=document.getElementById('project-task-id').value,name=document.getElementById('project-task-name').value.trim(),content=document.getElementById('project-task-content').value.trim();if(!name)return document.getElementById('project-task-name').focus();const action=taskId?'update_task':'add_task';currentProjectWorkspace=(await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id:currentProjectWorkspace.id,task_id:taskId,name,content})})).project;closeProjectTaskEditor();renderProjectWorkspace();switchProjectTab('tasks');}
-async function deleteProjectTask(taskId=''){taskId=taskId||document.getElementById('project-task-id').value;if(!taskId||!confirm('确定删除这个项目任务吗？'))return;currentProjectWorkspace=(await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete_task',id:currentProjectWorkspace.id,task_id:taskId})})).project;closeProjectTaskEditor();renderProjectWorkspace();}
+async function saveProjectTask(){const taskId=document.getElementById('project-task-id').value,name=document.getElementById('project-task-name').value.trim(),content=document.getElementById('project-task-content').value.trim();if(!name)return document.getElementById('project-task-name').focus();const action=taskId?'update_task':'add_task';currentProjectWorkspace=(await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,id:currentProjectWorkspace.id,task_id:taskId,name,content})})).project;closeProjectTaskEditor();renderProjectWorkspace();switchProjectTab('tasks');await loadSidebarProjects();}
+async function deleteProjectTask(taskId=''){taskId=taskId||document.getElementById('project-task-id').value;if(!taskId||!confirm('确定删除这个项目任务吗？'))return;currentProjectWorkspace=(await projectWorkspaceRequest({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete_task',id:currentProjectWorkspace.id,task_id:taskId})})).project;closeProjectTaskEditor();renderProjectWorkspace();await loadSidebarProjects();}
 async function startProjectTask(taskId){const p=currentProjectWorkspace;if(!p)return;const task=(p.tasks||[]).find(x=>x.id===taskId),goal=task?.content||task?.name;if(!goal)return openProjectTaskEditor(taskId);let context='',authorized=[];try{const [kr,pr]=await Promise.all([fetch(`/api/project-knowledge?project_id=${encodeURIComponent(p.id)}&query=${encodeURIComponent(goal)}`),fetch('/api/connector-policies')]),kd=await kr.json(),pd=await pr.json();context=(kd.hits||[]).map((x,i)=>`[资料${i+1}：${x.document_name}]\n${x.content}`).join('\n\n');authorized=(pd.policies||[]).filter(x=>x.enabled&&(x.project_ids||[]).includes(p.id)).map(x=>`${x.name}(${(x.scopes||[]).join('/')}${x.approval_required?',需审批':''})`);}catch(_){}navigateTo('chat');const input=document.getElementById('chat-input');input.value=`项目：${p.name}\n项目说明：${p.description||'暂无'}\n项目指令：${p.instruction||'围绕项目目标执行'}\n已启用专家：${(p.experts||[]).join('、')||'无'}\n已启用技能：${(p.skills||[]).join('、')||'无'}\n已授权连接器：${authorized.join('、')||'无；不得调用未授权外部服务'}\n\n与任务最相关的项目资料：\n${context||'未检索到相关资料，请明确说明信息缺口。'}\n\n当前任务：${task?.name||''}\n${goal}`;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();}
 async function renderProjectKnowledge(){const p=currentProjectWorkspace,host=document.getElementById('project-detail-assets');if(!p||!host)return;try{const r=await fetch(`/api/project-knowledge?project_id=${encodeURIComponent(p.id)}`),d=await r.json();const docs=d.documents||[],artifacts=(p.assets||[]).filter(x=>x.artifact_id);host.innerHTML=[...docs.map(x=>`<div class="rounded-xl border p-4 flex items-center gap-3"><i class="fas fa-file-lines"></i><div class="flex-1"><b class="text-sm">${escapeHtml(x.name)}</b><p class="text-xs text-slate-400 mt-1">${x.status==='indexed'?`${x.chunk_count} 个检索片段`:`已保存，未索引：${escapeHtml(x.error||'格式不支持')}`}</p></div><button onclick="deleteProjectKnowledge('${x.id}')" class="text-red-400 text-xs">删除</button></div>`),...artifacts.map(x=>`<button onclick="navigateTo('artifacts');setTimeout(()=>openArtifactDetail('${x.artifact_id}'),50)" class="rounded-xl border p-4 text-left"><i class="fas fa-box-archive mr-2"></i>${escapeHtml(x.title)}</button>`)].join('')||'<div class="text-center text-slate-400 py-5">还没有项目资料</div>';}catch(error){host.innerHTML=`<div class="text-red-500">${escapeHtml(error.message)}</div>`;}}
 async function uploadProjectKnowledge(file){if(!file||!currentProjectWorkspace)return;const data=new FormData();data.append('project_id',currentProjectWorkspace.id);data.append('file',file);const r=await fetch('/api/project-knowledge',{method:'POST',body:data}),d=await r.json();if(d.status!=='success')return alert(d.message);currentProjectWorkspace=(await projectWorkspaceRequest()).projects.find(x=>x.id===currentProjectWorkspace.id);renderProjectWorkspace();}
@@ -4429,7 +4666,7 @@ function openChatTaskOverview() {
     closeChatToolPanel();
     navigateTo('mission-control');
 }
-document.addEventListener('DOMContentLoaded',()=>{enhanceChatExperience();loadSidebarProjects();setTimeout(()=>{if(typeof loadSessionList==='function')loadSessionList();},0);});
+document.addEventListener('DOMContentLoaded',()=>{enhanceChatExperience();loadSidebarProjects().then(()=>{const target=new URLSearchParams(location.search).get('project_task')||'',match=target.match(/^project:([\w-]+):([\w-]+)$/);if(match)openSidebarProjectTask(match[1],match[2]);});setTimeout(()=>{if(typeof loadSessionList==='function')loadSessionList();},0);});
 new MutationObserver(mutations=>{for(const m of mutations)for(const node of m.addedNodes)if(node.nodeType===1&&(node.id==='welcome-screen'||node.querySelector?.('#welcome-screen')))enhanceChatExperience(node);}).observe(document.documentElement,{childList:true,subtree:true});
 
 document.querySelectorAll('.menu-group > button').forEach(btn => {
@@ -4848,6 +5085,8 @@ function generateSessionId() {
 // Restore session_id from localStorage so conversation history survives page refresh.
 // A new id is only generated when the user explicitly starts a new chat.
 function loadOrCreateSessionId() {
+    const linked=new URLSearchParams(location.search).get('session');
+    if(linked&&/^[\w-]{1,128}$/.test(linked)){localStorage.setItem(SESSION_ID_KEY,linked);return linked;}
     const stored = localStorage.getItem(SESSION_ID_KEY);
     if (stored) return stored;
     const fresh = generateSessionId();
@@ -5399,6 +5638,50 @@ const attachmentPreview = document.getElementById('attachment-preview');
 // Pending attachments: [{file_path, file_name, file_type, preview_url}]
 // Items with _uploading=true are still in flight.
 let pendingAttachments = [];
+const composerCapabilityStorageKey = () => `cow_composer_capabilities_${sessionId}`;
+function loadComposerCapabilities() {
+    try {
+        const data = JSON.parse(localStorage.getItem(composerCapabilityStorageKey()) || '[]');
+        composerSelectedCapabilities = Array.isArray(data) ? data.filter(x =>
+            ['expert', 'skill', 'connector'].includes(x.kind) && typeof x.name === 'string'
+        ).slice(0, 12) : [];
+    } catch (_) { composerSelectedCapabilities = []; }
+    renderComposerContextChips();
+}
+function saveComposerCapabilities() {
+    localStorage.setItem(composerCapabilityStorageKey(), JSON.stringify(composerSelectedCapabilities));
+}
+let composerSelectedCapabilities = [];
+
+function renderComposerContextChips() {
+    const host = document.getElementById('composer-context-chips');
+    if (!host) return;
+    host.classList.toggle('hidden', composerSelectedCapabilities.length === 0);
+    host.innerHTML = composerSelectedCapabilities.map((item, index) => `
+        <div class="composer-context-token" title="${escapeHtml(item.kindLabel)}：${escapeHtml(item.name)}">
+            <i class="fas ${item.icon}"></i><span>${escapeHtml(item.name)}</span>
+            <button type="button" data-remove-capability="${index}" aria-label="移除 ${escapeHtml(item.name)}"><i class="fas fa-xmark"></i></button>
+        </div>`).join('');
+}
+
+document.getElementById('composer-context-chips')?.addEventListener('click', event => {
+    const button = event.target.closest('[data-remove-capability]');
+    if (!button) return;
+    composerSelectedCapabilities.splice(Number(button.dataset.removeCapability), 1);
+    renderComposerContextChips();
+    saveComposerCapabilities();
+});
+loadComposerCapabilities();
+
+function composerCapabilityPrompt() {
+    if (!composerSelectedCapabilities.length) return '';
+    const lines = composerSelectedCapabilities.map(item => {
+        if (item.kind === 'expert') return `专家：${item.name}${item.description ? `（${item.description}）` : ''}`;
+        if (item.kind === 'skill') return `技能：${item.name}（优先按已安装技能的说明执行）`;
+        return `连接器：${item.name}（仅在已连接且当前权限允许时使用）`;
+    });
+    return `【本次会话选择的能力】\n${lines.join('\n')}\n【用户需求】\n`;
+}
 let uploadingCount = 0;
 
 // Input history (like terminal arrow-key recall)
@@ -5594,6 +5877,9 @@ function toggleAttachMenu(event) {
 function closeComposerMoreMenu() {
     document.getElementById('composer-more-menu')?.classList.add('hidden');
     document.getElementById('composer-more-toggle')?.setAttribute('aria-expanded', 'false');
+    document.getElementById('composer-add-main')?.classList.remove('hidden');
+    const picker = document.getElementById('composer-add-picker');
+    if (picker) { picker.classList.add('hidden'); picker.innerHTML = ''; }
 }
 
 function toggleComposerMoreMenu(event) {
@@ -5608,6 +5894,62 @@ function toggleComposerMoreMenu(event) {
     }
     menu.classList.toggle('hidden', !willOpen);
     document.getElementById('composer-more-toggle')?.setAttribute('aria-expanded', String(willOpen));
+}
+
+async function openComposerCapabilityPicker(kind) {
+    const labels = { expert: '专家', skill: '技能', connector: '连接器' };
+    if (!labels[kind]) return;
+    const main = document.getElementById('composer-add-main');
+    const picker = document.getElementById('composer-add-picker');
+    if (!main || !picker) return;
+    main.classList.add('hidden');
+    picker.classList.remove('hidden');
+    picker.innerHTML = `<button type="button" class="composer-more-item" id="composer-picker-back"><i class="fas fa-arrow-left"></i><span>返回</span></button><div class="composer-menu-title">选择${labels[kind]}</div><input class="composer-picker-search" placeholder="搜索${labels[kind]}" aria-label="搜索${labels[kind]}"><div class="composer-picker-results"><div class="composer-picker-empty">正在加载…</div></div>`;
+    picker.querySelector('#composer-picker-back').addEventListener('click', () => {
+        picker.classList.add('hidden');
+        main.classList.remove('hidden');
+    });
+    let items = [];
+    try {
+        if (kind === 'expert') {
+            const response = await (await fetch('/api/experts')).json();
+            items = [...BUILTIN_EXPERTS, ...(response.experts || []).filter(x => x.enabled !== false)]
+                .map(x => ({ kind, name: x.name, description: x.description || x.desc || '', icon: 'fa-user-tie' }));
+        } else if (kind === 'skill') {
+            const response = await (await fetch('/api/skills')).json();
+            items = (response.skills || []).filter(x => x.enabled)
+                .map(x => ({ kind, name: x.name, description: x.description || '', icon: 'fa-wand-magic-sparkles' }));
+        } else {
+            const response = await (await fetch('/api/connector-policies')).json();
+            items = (response.policies || [])
+                .map(x => ({ kind, name: x.name || x.connector_id, description: (x.scopes || []).join('、'), icon: 'fa-plug', disabled: !x.enabled }));
+        }
+    } catch (error) {
+        if (!picker.classList.contains('hidden')) picker.querySelector('.composer-picker-results').innerHTML = '<div class="composer-picker-empty">加载失败，请稍后重试。</div>';
+        return;
+    }
+    if (picker.classList.contains('hidden')) return;
+    const results = picker.querySelector('.composer-picker-results');
+    const render = (query = '') => {
+        const matched = items.filter(x => `${x.name} ${x.description}`.toLowerCase().includes(query.trim().toLowerCase()));
+        results.innerHTML = matched.length ? matched.map((item, index) => `<button type="button" class="composer-more-item" data-capability-index="${index}" ${item.disabled ? 'disabled title="请先在连接器管理中启用"' : ''}><i class="fas ${item.icon}"></i><span title="${escapeHtml(item.description)}">${escapeHtml(item.name)}</span>${item.disabled ? '<small>未授权</small>' : ''}</button>`).join('') : '<div class="composer-picker-empty">没有匹配的项目。</div>';
+        if (kind === 'connector') results.insertAdjacentHTML('beforeend', '<button type="button" class="composer-more-item composer-manage-connectors"><i class="fas fa-gear"></i><span>管理连接器授权</span></button>');
+        results.querySelector('.composer-manage-connectors')?.addEventListener('click', () => { closeComposerMoreMenu(); navigateTo('skills'); switchCapabilityTab('connectors'); });
+        results.querySelectorAll('[data-capability-index]').forEach(button => button.addEventListener('click', () => {
+            const item = matched[Number(button.dataset.capabilityIndex)];
+            if (!item) return;
+            if (!composerSelectedCapabilities.some(x => x.kind === kind && x.name === item.name)) {
+                composerSelectedCapabilities.push({ ...item, kindLabel: labels[kind] });
+                renderComposerContextChips();
+                saveComposerCapabilities();
+            }
+            closeComposerMoreMenu();
+            chatInput.focus();
+        }));
+    };
+    picker.querySelector('.composer-picker-search').addEventListener('input', event => render(event.target.value));
+    render();
+    picker.querySelector('.composer-picker-search').focus();
 }
 
 document.addEventListener('click', event => {
@@ -5749,7 +6091,7 @@ folderInput.addEventListener('change', function() {
 
 document.addEventListener('click', (e) => {
     if (!isAttachMenuVisible()) return;
-    if (attachMenu.contains(e.target) || attachBtn.contains(e.target)) return;
+    if (attachMenu.contains(e.target) || attachBtn?.contains(e.target)) return;
     hideAttachMenu();
 });
 
@@ -7095,12 +7437,14 @@ function regenerateFromUserMessage(userMsgEl) {
 }
 
 function sendMessage() {
+    document.getElementById('chat-main')?.classList.remove('space-new-chat');
     // Do NOT branch on sendBtnMode here: Enter should always send (so
     // typing "/cancel" submits normally). Cancel is wired only to the
     // send button's pointer click — see send-btn listener above.
 
     const text = chatInput.value.trim();
     if (!text && pendingAttachments.length === 0) return;
+    const agentMessage = composerCapabilityPrompt() + text;
 
     if (text) {
         inputHistory.push(text);
@@ -7127,7 +7471,7 @@ function sendMessage() {
     sendBtn.disabled = true;
     if (typeof resetTurnArtifacts === 'function') resetTurnArtifacts();
 
-    const body = { session_id: sessionId, message: text, stream: true, timestamp: timestamp.toISOString(), lang: currentLang };
+    const body = { session_id: sessionId, message: agentMessage, stream: true, timestamp: timestamp.toISOString(), lang: currentLang };
     if (attachments.length > 0) {
         body.attachments = attachments.map(a => ({
             file_path: a.file_path,
@@ -7213,13 +7557,46 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
     const responseTimerStartedAt = Date.now();
     let responseTimerId = null;
     let responseTimerStopped = false;
+    let responseStage = '正在准备任务';
+    let completedSteps = 0;
+
+    function setResponseStage(stage) {
+        responseStage = stage || '处理中';
+        updateResponseTimer();
+    }
+
+    function describeToolStage(item) {
+        const tool = String(item.tool || '').toLowerCase();
+        const args = item.arguments || {};
+        const command = String(args.command || args.cmd || '').toLowerCase();
+        if (tool === 'bash' || tool === 'shell' || tool === 'exec') {
+            if (/git\s+clone/.test(command)) return '正在下载 GitHub 项目';
+            if (/\b(pip|npm|pnpm|yarn|uv)\s+.*\binstall\b/.test(command)) return '正在安装项目依赖';
+            if (/source_to_md\.py/.test(command)) return '正在整理项目资料';
+            if (/project_manager\.py/.test(command)) return '正在准备 PPT 项目';
+            if (/\b(render|export|compile|validate)[\w.-]*\.py/.test(command)) return '正在生成或检查文件';
+            return '正在执行本地命令';
+        }
+        if (tool === 'web_search') return '正在查找项目资料';
+        if (tool === 'web_fetch') return '正在读取网页资料';
+        if (tool === 'search_files') return '正在查找本地文件';
+        if (tool === 'read') return '正在读取文件';
+        if (tool === 'write') return '正在写入内容';
+        return '正在运行工具';
+    }
 
     function updateResponseTimer() {
         if (!botEl) return;
         const timerEl = botEl.querySelector('.response-elapsed');
         if (timerEl) timerEl.textContent = formatChatElapsed((Date.now() - responseTimerStartedAt) / 1000);
         const stateEl = botEl.querySelector('.response-state');
-        if (stateEl) stateEl.textContent = responseTimerStopped ? '已完成' : '处理中';
+        if (stateEl) stateEl.textContent = responseTimerStopped ? '已完成' : responseStage;
+        toolElements.forEach(el => {
+            const duration = el.querySelector('.tool-live-duration');
+            if (duration && el._startedAt) {
+                duration.textContent = formatChatElapsed((Date.now() - el._startedAt) / 1000);
+            }
+        });
     }
 
     function stopResponseTimer() {
@@ -7276,8 +7653,19 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
     function settlePendingTools() {
         toolElements.forEach(el => {
             el.classList.remove('tool-streaming');
+            el.classList.add('tool-failed', 'expanded');
             const icon = el.querySelector('.tool-icon');
             if (icon) icon.className = 'fas fa-minus text-slate-400 flex-shrink-0 tool-icon';
+            const status = el.querySelector('.tool-status');
+            if (status) status.textContent = '已中断';
+            el.querySelector('.tool-progress-line')?.remove();
+            el.querySelector('.tool-progress-track')?.remove();
+            if (!el.querySelector('.tool-recovery-advice')) {
+                const advice = document.createElement('div');
+                advice.className = 'tool-recovery-advice';
+                advice.textContent = '执行中断。先核对已完成的外部操作，再决定是否重试。';
+                el.querySelector('.tool-detail')?.appendChild(advice);
+            }
         });
         toolElements.clear();
     }
@@ -7365,6 +7753,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
     // re-attach replay alike, so both paths produce identical UI.
     function processSSEItem(item) {
             if (item.type === 'routing_decision') {
+                setResponseStage('已识别任务，准备执行');
                 renderInlineRoutingDecision(item);
 
             } else if (item.type === 'reasoning') {
@@ -7430,6 +7819,7 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
                 }
 
             } else if (item.type === 'delta') {
+                setResponseStage('正在整理执行结果');
                 ensureBotEl();
                 if (currentReasoningEl) {
                     finalizeThinking(currentReasoningEl, reasoningStartTime, reasoningText);
@@ -7453,6 +7843,8 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
                 }
 
             } else if (item.type === 'tool_start') {
+                const stage = describeToolStage(item);
+                setResponseStage(`第 ${completedSteps + 1} 步：${stage}`);
                 ensureBotEl();
                 if (currentReasoningEl) {
                     finalizeThinking(currentReasoningEl, reasoningStartTime, reasoningText);
@@ -7462,19 +7854,30 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
                 accumulatedText = '';
                 contentEl.innerHTML = '';
 
+                // Keep only the newest running operation open by default.
+                // Failed operations remain visible so their recovery guidance
+                // is not hidden by a subsequent fallback tool.
+                stepsEl.querySelectorAll('.agent-tool-step.expanded:not(.tool-failed)')
+                    .forEach(step => step.classList.remove('expanded'));
+
                 // Add tool execution indicator (collapsible)
                 const toolEl = document.createElement('div');
-                toolEl.className = 'agent-step agent-tool-step tool-streaming';
+                toolEl.className = 'agent-step agent-tool-step tool-streaming expanded';
                 toolEl.dataset.progressReceived = 'false';
                 const argsStr = formatToolArgs(item.arguments || {});
                 toolEl.innerHTML = `
-                    <div class="tool-header" onclick="this.parentElement.classList.toggle('expanded')">
+                    <div class="tool-header" onclick="toggleToolStep(this)" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleToolStep(this)}">
                         <i class="fas fa-cog fa-spin text-primary-400 flex-shrink-0 tool-icon"></i>
-                        <span class="tool-name">${item.tool}</span>
+                        <span class="tool-name">${escapeHtml(item.tool || 'tool')}</span>
+                        <span class="tool-status">进行中</span>
+                        <span class="tool-summary"></span>
+                        <span class="tool-live-duration text-slate-400">00时00分00秒</span>
                         <span class="tool-substep-count"></span>
                         <i class="fas fa-chevron-right tool-chevron"></i>
                     </div>
                     <div class="tool-detail">
+                        <div class="tool-progress-line"><span>正在执行</span><span class="tool-progress-value">等待进度…</span></div>
+                        <div class="tool-progress-track"><div class="tool-progress-bar"></div></div>
                         <div class="tool-detail-section">
                             <div class="tool-detail-label">Input</div>
                             <pre class="tool-detail-content">${argsStr}</pre>
@@ -7490,6 +7893,8 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
                         </div>
                     </div>`;
                 stepsEl.appendChild(toolEl);
+                toolEl._startedAt = Date.now();
+                toolEl._stage = stage;
                 toolElements.set(item.tool_call_id, toolEl);
 
                 scrollChatToBottom();
@@ -7497,11 +7902,22 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
             } else if (item.type === 'tool_progress') {
                 const toolEl = toolElements.get(item.tool_call_id);
                 if (toolEl) {
-                    if (toolEl.dataset.progressReceived !== 'true') {
-                        toolEl.classList.add('expanded');
-                        toolEl.dataset.progressReceived = 'true';
+                    const update = String(item.content || '');
+                    const output = toolEl.querySelector('.tool-live-output');
+                    if (output && update) {
+                        const previous = output.textContent || '';
+                        output.textContent = (update.startsWith(previous) ? update : `${previous}${previous ? '\n' : ''}${update}`).slice(-12000);
                     }
-                    toolEl.querySelector('.tool-live-output').textContent = String(item.content || '');
+                    const percent = update.match(/(?:^|\s)(\d{1,3}(?:\.\d+)?)\s*%/);
+                    const value = toolEl.querySelector('.tool-progress-value');
+                    const bar = toolEl.querySelector('.tool-progress-bar');
+                    if (percent && Number(percent[1]) <= 100) {
+                        if (value) value.textContent = `${Number(percent[1])}%`;
+                        if (bar) { bar.style.width = `${Number(percent[1])}%`; bar.classList.add('determinate'); }
+                    } else if (value) {
+                        value.textContent = '持续更新日志';
+                    }
+                    toolEl.dataset.progressReceived = 'true';
                     scrollChatToBottom();
                 }
 
@@ -7516,9 +7932,21 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
 
                     // Show execution time
                     const nameEl = toolEl.querySelector('.tool-name');
+                    toolEl.querySelector('.tool-live-duration')?.remove();
                     if (item.execution_time !== undefined) {
-                        nameEl.innerHTML += ` <span class="tool-time">${item.execution_time}s</span>`;
+                        const duration = Number(item.execution_time);
+                        if (Number.isFinite(duration)) {
+                            const timeEl = document.createElement('span');
+                            timeEl.className = 'tool-time';
+                            timeEl.textContent = `${duration.toFixed(2)}s`;
+                            nameEl.after(timeEl);
+                            try { localStorage.setItem(`cow_chat_tool_duration:${ownerSession}:${item.tool_call_id}`, String(duration)); } catch (_) {}
+                        }
                     }
+                    toolEl.querySelector('.tool-status').textContent = isError ? '失败' : '已完成';
+                    toolEl.querySelector('.tool-summary').textContent = summarizeToolOutcome(item.display || item.result, isError);
+                    toolEl.querySelector('.tool-progress-line')?.remove();
+                    toolEl.querySelector('.tool-progress-track')?.remove();
 
                     // Fill output section. A tool that wrote its outcome for a
                     // person (item.display) gets rendered as markdown; the raw
@@ -7537,15 +7965,20 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
                     }
 
                     toolEl.classList.remove('tool-streaming');
-                    // Tools collapse once they are done; their output is a
-                    // trace. A tool that wrote something for a person to read
-                    // stays open — the reader just waited for it.
-                    toolEl.classList.toggle('expanded', !!item.display);
+                    // Completed operations reduce to one status/summary row;
+                    // errors keep their details and next action visible.
+                    toolEl.classList.toggle('expanded', isError);
                     if (!item.result && !item.display) {
                         const outputSection = toolEl.querySelector('.tool-output-section');
                         if (outputSection) outputSection.remove();
                     }
-                    if (isError) toolEl.classList.add('tool-failed');
+                    if (isError) {
+                        toolEl.classList.add('tool-failed');
+                        const advice = document.createElement('div');
+                        advice.className = 'tool-recovery-advice';
+                        advice.textContent = `建议：${toolRecoveryAdvice(item.result, item.permission_denied)}`;
+                        toolEl.querySelector('.tool-detail')?.appendChild(advice);
+                    }
                     // A permission refusal is not an ordinary failure: surface a
                     // one-click way to raise this session's permission instead of
                     // leaving the user to decode the model's error text.
@@ -7553,7 +7986,11 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
                         _appendPermissionDeniedHint(toolEl, item.permission_mode);
                     }
                     toolElements.delete(item.tool_call_id);
+                    completedSteps += 1;
                 }
+                const activeTool = [...toolElements.values()].at(-1);
+                setResponseStage(activeTool ? `${completedSteps} 步已完成，${activeTool._stage}` :
+                    (item.status === 'success' ? `已完成 ${completedSteps} 步，正在规划下一步` : '步骤遇到问题，正在处理'));
 
             } else if (item.type === 'subagent_step') {
                 // A tool call made inside a sub agent, rendered under that sub
@@ -7776,13 +8213,22 @@ function startSSE(requestId, loadingEl, timestamp, titleInfo, replayItems) {
             // Record every event for re-attach replay (capped to avoid
             // unbounded growth on very long streams).
             if (item.type === 'tool_progress' && item.tool_call_id) {
-                const previousIndex = buffer.items.findIndex(
+                const previous = buffer.items.findIndex(
                     buffered => buffered.type === 'tool_progress'
                         && buffered.tool_call_id === item.tool_call_id
                 );
-                if (previousIndex >= 0) buffer.items.splice(previousIndex, 1);
+                const count = buffer.items.filter(
+                    buffered => buffered.type === 'tool_progress'
+                        && buffered.tool_call_id === item.tool_call_id
+                ).length;
+                if (count >= 40 && previous >= 0) buffer.items.splice(previous, 1);
             }
-            if (buffer.items.length < 5000) buffer.items.push(item);
+            if (buffer.items.length >= 5000) {
+                const disposable = buffer.items.findIndex(buffered =>
+                    buffered.type === 'tool_progress' || buffered.type === 'reasoning');
+                buffer.items.splice(disposable >= 0 ? disposable : 0, 1);
+            }
+            buffer.items.push(item);
             if (seq) lastSeq = seq;
 
             // done is persisted before it is published. Remember that state
@@ -8076,11 +8522,16 @@ function renderToolCallsHtml(toolCalls) {
         const argsStr = formatToolArgs(tc.arguments || {});
         const resultStr = tc.result ? escapeHtml(String(tc.result)) : '';
         const hasResult = !!resultStr;
+        const failed = tc.is_error === true || tc.status === 'error';
+        const duration = tc.execution_time ?? savedToolDuration(tc.id);
         return `
-<div class="agent-step agent-tool-step">
-    <div class="tool-header" onclick="this.parentElement.classList.toggle('expanded')">
-        <i class="fas fa-check text-primary-400 flex-shrink-0 tool-icon"></i>
+<div class="agent-step agent-tool-step${failed ? ' tool-failed expanded' : ''}">
+    <div class="tool-header" onclick="toggleToolStep(this)" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleToolStep(this)}">
+        <i class="fas ${failed ? 'fa-times text-red-400' : 'fa-check text-primary-400'} flex-shrink-0 tool-icon"></i>
         <span class="tool-name">${escapeHtml(tc.name || '')}</span>
+        <span class="tool-status">${failed ? '失败' : '已完成'}</span>
+        <span class="tool-summary">${escapeHtml(summarizeToolOutcome(tc.result, failed))}</span>
+        ${duration != null && Number.isFinite(Number(duration)) ? `<span class="tool-time">${Number(duration).toFixed(2)}s</span>` : ''}
         <i class="fas fa-chevron-right tool-chevron"></i>
     </div>
     <div class="tool-detail">
@@ -8090,12 +8541,53 @@ function renderToolCallsHtml(toolCalls) {
         </div>
         ${hasResult ? `
         <div class="tool-detail-section tool-output-section">
-            <div class="tool-detail-label">Output</div>
+            <div class="tool-detail-label">${failed ? 'Error' : 'Output'}</div>
             <pre class="tool-detail-content">${resultStr}</pre>
         </div>` : ''}
+        ${failed ? `<div class="tool-recovery-advice">建议：${escapeHtml(toolRecoveryAdvice(tc.result))}</div>` : ''}
     </div>
 </div>`;
     }).join('');
+}
+
+function toggleToolStep(header) {
+    const step = header?.closest('.agent-tool-step');
+    if (!step) return;
+    step.classList.toggle('expanded');
+    step.dataset.userExpanded = step.classList.contains('expanded') ? 'true' : 'false';
+}
+
+function summarizeToolOutcome(value, failed = false) {
+    let raw = typeof value === 'string' ? value : JSON.stringify(value || '');
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+            raw = parsed.message || parsed.summary || parsed.error || parsed.output || parsed.result || raw;
+            if (typeof raw !== 'string') raw = JSON.stringify(raw);
+        }
+    } catch (_) {}
+    const summary = String(raw || '')
+        .replace(/\x1b\[[0-9;]*m/g, '')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return (summary || (failed ? '执行失败' : '已完成')).slice(0, 115);
+}
+
+function toolRecoveryAdvice(result, permissionDenied = false) {
+    const error = String(result || '').toLowerCase();
+    if (permissionDenied || /permission|denied|未授权|无权限/.test(error)) return '检查本次会话的访问权限或连接器授权后重试。';
+    if (/not found|不存在|找不到|no such file/.test(error)) return '核对文件名和路径，必要时扩大已授权搜索范围。';
+    if (/timeout|timed out|超时|network|连接失败/.test(error)) return '检查连接状态后重试；对外发送前先核对是否已经成功。';
+    return '查看输入与错误详情后重试；如涉及外部发送，先核对目标端状态，避免重复执行。';
+}
+
+function savedToolDuration(toolId) {
+    if (!toolId) return null;
+    try {
+        const value = localStorage.getItem(`cow_chat_tool_duration:${sessionId}:${toolId}`);
+        return value === null ? null : Number(value);
+    } catch (_) { return null; }
 }
 
 // Cap for rendering reasoning content in the bubble. Beyond this size,
@@ -8174,6 +8666,7 @@ function renderStepsHtml(steps) {
             const argsStr = formatToolArgs(step.arguments || {});
             const resultStr = step.result ? escapeHtml(String(step.result)) : '';
             const isErr = step.is_error === true;
+            const duration = step.execution_time ?? savedToolDuration(step.id);
             const iconClass = isErr
                 ? 'fas fa-times text-red-400 flex-shrink-0 tool-icon'
                 : 'fas fa-check text-primary-400 flex-shrink-0 tool-icon';
@@ -8185,10 +8678,13 @@ function renderStepsHtml(steps) {
                     ? `<pre class="tool-detail-content${isErr ? ' tool-error-text' : ''}">${resultStr}</pre>`
                     : '');
             html += `
-<div class="agent-step agent-tool-step${isErr ? ' tool-failed' : ''}">
-    <div class="tool-header" onclick="this.parentElement.classList.toggle('expanded')">
+<div class="agent-step agent-tool-step${isErr ? ' tool-failed expanded' : ''}">
+    <div class="tool-header" onclick="toggleToolStep(this)" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleToolStep(this)}">
         <i class="${iconClass}"></i>
         <span class="tool-name">${escapeHtml(step.name || '')}</span>
+        <span class="tool-status">${isErr ? '失败' : '已完成'}</span>
+        <span class="tool-summary">${escapeHtml(summarizeToolOutcome(step.display || step.result, isErr))}</span>
+        ${duration != null && Number.isFinite(Number(duration)) ? `<span class="tool-time">${Number(duration).toFixed(2)}s</span>` : ''}
         <i class="fas fa-chevron-right tool-chevron"></i>
     </div>
     <div class="tool-detail">
@@ -8201,6 +8697,7 @@ function renderStepsHtml(steps) {
             <div class="tool-detail-label">${isErr ? 'Error' : 'Output'}</div>
             ${outputHtml}
         </div>` : ''}
+        ${isErr ? `<div class="tool-recovery-advice">建议：${escapeHtml(toolRecoveryAdvice(step.result))}</div>` : ''}
     </div>
 </div>`;
             // If this tool sent a file (send/read tool), render the media inline
@@ -8729,6 +9226,7 @@ function addLoadingIndicator() {
 }
 
 function newChat(optimistic = true, inherit = true) {
+    document.getElementById('chat-main')?.classList.remove('space-new-chat');
     // Do NOT close active streams: other sessions keep streaming in the
     // background (each stream self-guards against the foreign view) and their
     // replies still complete and persist.
@@ -8743,6 +9241,7 @@ function newChat(optimistic = true, inherit = true) {
 
     // Generate a fresh session and persist it so the next page load also starts clean
     sessionId = generateSessionId();
+    loadComposerCapabilities();
     updateChatSessionHeader();
     localStorage.setItem(SESSION_ID_KEY, sessionId);
     refreshWorkspaceSelector();  // a fresh session starts on the default workspace
@@ -8922,7 +9421,7 @@ async function newChatInSpace(projectPath) {
             body: JSON.stringify({ session: newSid, project_dir: projectPath }),
         });
         const data = await res.json();
-        if (data.status !== 'success') { _wsToast(data.message || 'failed'); return; }
+        if (data.status !== 'success') throw new Error(data.message || '无法将新任务关联到空间');
         // Reflect the binding in the composer selector state + label.
         _wsSelState.current = data.current || null;
         if (Array.isArray(data.recents)) _wsSelState.recents = data.recents;
@@ -8947,7 +9446,8 @@ async function newChatInSpace(projectPath) {
         // that in-flight GET could resolve late and reset the label to default.
         // Re-sync from the backend (now bound) so the final label is correct.
         refreshWorkspaceSelector();
-    } catch (e) { _wsToast(String(e.message || e)); }
+        return true;
+    } catch (e) { _wsToast(String(e.message || e)); return false; }
 }
 
 // =====================================================================
@@ -9298,6 +9798,7 @@ function _renderSessionList() {
         }
     });
     renderSidebarSessionList();
+    renderSidebarProjectList();
     updateChatSessionHeader();
 }
 
@@ -9593,6 +10094,7 @@ function switchSession(newSessionId) {
     // Switching back re-attaches and resumes live streaming.
 
     sessionId = newSessionId;
+    loadComposerCapabilities();
     updateChatSessionHeader();
     updateEditButtonsState();
     localStorage.setItem(SESSION_ID_KEY, sessionId);
@@ -13714,7 +14216,16 @@ function renderChannelHealth(channelName){
     </div>`;
     const decisionHtml=renderDecisionCard(channelDecisionFromHealth(item),{kind:'notification',title:'系统发送判断',compact:true});
     box.className=`mb-5 rounded-xl px-4 py-3 text-xs ${cls}`;
-    box.innerHTML=`<div class="flex flex-wrap items-center justify-between gap-2"><div class="min-w-0"><div><i class="fas ${icon} mr-2"></i>${escapeHtml(item.message||'状态未知')}${item.receiver_hint?` · ${escapeHtml(item.receiver_hint)}`:''}</div><div class="mt-2 flex flex-wrap gap-1.5">${statusChips}</div></div><span class="flex flex-wrap gap-2">${pendingButton}${reconnectButton}${repairWeixinButton}<button onclick="testChannelHealth('${channelName}',this)" class="px-3 py-1.5 rounded-lg bg-white/70 dark:bg-black/10 border border-current/10 text-xs">发送测试</button></span></div>${decisionHtml}${pendingHtml}${guidanceHtml}`;
+    box.innerHTML=`<div class="flex flex-wrap items-center justify-between gap-2"><div class="min-w-0"><div><i class="fas ${icon} mr-2"></i>${escapeHtml(item.message||'状态未知')}${item.receiver_hint?` · ${escapeHtml(item.receiver_hint)}`:''}</div><div class="mt-2 flex flex-wrap gap-1.5">${statusChips}</div></div><span class="flex flex-wrap gap-2">${pendingButton}${reconnectButton}${repairWeixinButton}${channelName==='weixin'?'<button onclick="showWeixinExecutionTimeline(this)" class="px-3 py-1.5 rounded-lg bg-white/70 dark:bg-black/10 border border-current/10 text-xs">最近执行</button>':''}<button onclick="testChannelHealth('${channelName}',this)" class="px-3 py-1.5 rounded-lg bg-white/70 dark:bg-black/10 border border-current/10 text-xs">发送测试</button></span></div><div class="weixin-execution-timeline"></div>${decisionHtml}${pendingHtml}${guidanceHtml}`;
+}
+async function showWeixinExecutionTimeline(button){
+    const host=document.querySelector('#channel-health-weixin .weixin-execution-timeline');if(!host)return;
+    host.innerHTML='<div class="mt-3 text-xs">正在读取执行记录…</div>';
+    try{
+        const data=await intelligenceRequest('/api/channels/health?channel=weixin&trace=1');
+        const traces=data.traces||[];
+        host.innerHTML=traces.length?`<details open class="mt-3 rounded-lg bg-white/60 dark:bg-black/10 p-3"><summary class="cursor-pointer font-semibold">最近 ${traces.length} 次微信指令</summary><div class="mt-2 space-y-2">${traces.map(trace=>`<div class="rounded-lg border border-current/10 p-2"><div class="font-mono text-[10px] opacity-60">${escapeHtml(trace.run_id)}</div>${(trace.events||[]).map(row=>`<div class="mt-1 text-[11px]">${escapeHtml(String(row.at||'').replace('T',' ').slice(0,19))} · ${escapeHtml(row.stage||'')} · ${escapeHtml(row.tool||row.route||'')} · ${escapeHtml(row.status||'')}${row.duration_ms!=null?` · ${Number(row.duration_ms)}ms`:''}</div>`).join('')}</div>`).join('')}</div></details>`:'<div class="mt-3 text-xs">暂无微信执行记录</div>';
+    }catch(error){host.innerHTML=`<div class="mt-3 text-xs text-red-600">读取失败：${escapeHtml(error.message||error)}</div>`;}
 }
 async function retryPendingDeliveries(channelName,button){
     const old=button?.innerHTML;if(button){button.disabled=true;button.innerHTML='<i class="fas fa-spinner fa-spin mr-1"></i>补发中';}
@@ -13772,7 +14283,7 @@ async function testChannelHealth(channelName,button){
         const response=await fetch('/api/channels/health',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:channelName,receiver})});
         const data=await response.json();
         if(data.status!=='success')throw new Error(data.message||'测试发送失败');
-        _wsToast?.('测试消息已发送');
+        _wsToast?.('微信/通道接口已接受测试消息，请在接收端核对');
         await refreshChannelHealth();
     }catch(error){
         _wsToast?.(`测试失败：${error.message||error}`);
@@ -14817,18 +15328,105 @@ function connectFeishuAfterRegister(appId, appSecret) {
 let tasksLoaded = false;
 let schedulerTaskFilter = 'all';
 let schedulerDeliveryTargets = [];
-async function openSchedulerCreator(){
-    const modal=document.getElementById('scheduler-creator-modal');document.getElementById('scheduler-create-status').textContent='';modal.classList.remove('hidden');modal.classList.add('flex');toggleSchedulerCreateFields();
+let schedulerWeatherCustomDraft = '';
+let schedulerEditingTaskId = '';
+async function openSchedulerCreator(template='custom'){
+    const modal=document.getElementById('scheduler-creator-modal');
+    schedulerEditingTaskId='';schedulerWeatherCustomDraft='';document.getElementById('scheduler-create-submit').textContent='确定';document.querySelector('#scheduler-creator-modal .scheduler-creator-heading h2').textContent=template==='weather_hourly_brief'?'新建天气提醒':'新建定时任务';
+    for(const id of ['scheduler-create-name','scheduler-create-content','scheduler-create-receiver'])document.getElementById(id).value='';
+    document.getElementById('scheduler-create-template').value=template;
+    document.getElementById('scheduler-weather-location').value=template==='weather_hourly_brief'?'上海市浦东新区':'';
+    document.getElementById('scheduler-weather-start').value='18:00';
+    document.getElementById('scheduler-weather-end').value='19:00';
+    const now=new Date(),tomorrow=new Date(now.getTime()+86400000),localDate=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    document.getElementById('scheduler-create-repeat').value='daily';
+    document.getElementById('scheduler-create-time').value=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    document.getElementById('scheduler-create-date').value=localDate(tomorrow);
+    document.getElementById('scheduler-create-yearly').value=localDate(now);
+    document.getElementById('scheduler-create-weekday').value=String(now.getDay());
+    document.getElementById('scheduler-create-monthday').value=String(now.getDate());
+    document.getElementById('scheduler-create-action').value='agent_task';
+    document.getElementById('scheduler-create-raw-cron-toggle').checked=false;
+    document.getElementById('scheduler-create-silent').checked=false;
+    document.getElementById('scheduler-create-wecom').checked=false;
+    document.getElementById('scheduler-create-advanced').classList.add('hidden');
+    const status=document.getElementById('scheduler-create-status');status.textContent='';status.className='scheduler-creator-status';
+    renderSchedulerCreatePreview(null);modal.classList.remove('hidden');modal.classList.add('flex');toggleSchedulerCreateTemplate();toggleSchedulerCreateFields();updateSchedulerCreateSubmit();
     const select=document.getElementById('scheduler-create-target');select.innerHTML='<option value="">正在读取可用通道...</option>';
     try{
         const response=await fetch('/api/scheduler/targets'),data=await response.json();if(data.status!=='success')throw new Error(data.message||'读取通道失败');
         schedulerDeliveryTargets=[];(data.targets||[]).forEach(target=>schedulerDeliveryTargets.push({...target,manual:false}));(data.manual_channels||[]).forEach(item=>schedulerDeliveryTargets.push({channel:item.channel,channel_label:item.label,receiver:'',receiver_name:item.label,is_group:false,manual:true}));
-        select.innerHTML=schedulerDeliveryTargets.map((target,index)=>`<option value="${index}">${escapeHtml(target.channel_label)}${target.receiver_name&&target.channel!=='web'?' · '+escapeHtml(target.receiver_name):''}${target.manual?'（填写接收目标）':''}</option>`).join('');toggleSchedulerManualTarget();
+        select.innerHTML=schedulerDeliveryTargets.map((target,index)=>`<option value="${index}">${escapeHtml(target.channel_label)}${target.receiver_name&&target.channel!=='web'?' · '+escapeHtml(target.receiver_name):''}${target.manual?'（填写接收目标）':''}</option>`).join('');
+        const weather=document.getElementById('scheduler-create-template').value==='weather_hourly_brief';
+        const weixinIndex=weather?schedulerDeliveryTargets.findIndex(target=>target.channel==='weixin'&&!target.manual):-1;
+        const webIndex=schedulerDeliveryTargets.findIndex(target=>target.channel==='web');
+        if(weixinIndex>=0)select.value=String(weixinIndex);else if(webIndex>=0)select.value=String(webIndex);
+        toggleSchedulerManualTarget();
     }catch(error){select.innerHTML='<option value="">通道读取失败</option>';document.getElementById('scheduler-create-status').textContent=error.message;}
 }
 function closeSchedulerCreator(){const modal=document.getElementById('scheduler-creator-modal');modal.classList.add('hidden');modal.classList.remove('flex');}
-function toggleSchedulerCreateFields(){const type=document.getElementById('scheduler-create-type').value;document.getElementById('scheduler-create-interval-wrap').classList.toggle('hidden',type!=='interval');document.getElementById('scheduler-create-cron-wrap').classList.toggle('hidden',type!=='cron');document.getElementById('scheduler-create-once-wrap').classList.toggle('hidden',type!=='once');}
-function toggleSchedulerManualTarget(){const target=schedulerDeliveryTargets[Number(document.getElementById('scheduler-create-target').value)],wrap=document.getElementById('scheduler-create-manual-wrap'),input=document.getElementById('scheduler-create-receiver');wrap.classList.toggle('hidden',!target?.manual);if(input)input.placeholder=target?.channel==='webhook'?'https://example.com/webhook':'用户、群聊、邮箱或通道要求的 ID';}
+function toggleSchedulerCreateAdvanced(){document.getElementById('scheduler-create-advanced').classList.toggle('hidden');}
+function toggleSchedulerCreateTemplate(){
+    const weather=document.getElementById('scheduler-create-template').value==='weather_hourly_brief';
+    const prompt=document.getElementById('scheduler-create-prompt-wrap'),fields=document.getElementById('scheduler-create-weather-fields');
+    if(weather){schedulerWeatherCustomDraft=document.getElementById('scheduler-create-content').value;}
+    else{document.getElementById('scheduler-create-content').value=schedulerWeatherCustomDraft;}
+    prompt.classList.toggle('hidden',weather);fields.classList.toggle('hidden',!weather);
+    document.getElementById('scheduler-create-time-label').textContent=weather?'发送时间':'时间';
+    if(weather){document.getElementById('scheduler-create-time').value='18:00';updateSchedulerWeatherTemplate();}
+    else updateSchedulerCreateSubmit();
+    if(weather){
+        const weixinIndex=schedulerDeliveryTargets.findIndex(target=>target.channel==='weixin'&&!target.manual);
+        if(weixinIndex>=0){document.getElementById('scheduler-create-target').value=String(weixinIndex);toggleSchedulerManualTarget();}
+    }
+    toggleSchedulerCreateFields();
+}
+function updateSchedulerWeatherTemplate(){
+    const location=document.getElementById('scheduler-weather-location').value.trim(),start=document.getElementById('scheduler-weather-start').value||'18:00',end=document.getElementById('scheduler-weather-end').value||'19:00';
+    const name=document.getElementById('scheduler-create-name');
+    if(!name.value.trim()||name.value==='天气时段提醒'||name.dataset.weatherName===name.value){name.value=location?`${location}天气提醒`:'天气时段提醒';name.dataset.weatherName=name.value;}
+    document.getElementById('scheduler-create-content').value=`查询${location||'指定地区'}当日或次日${start}–${end}逐小时天气，按天气时段提醒固定模板发送。`;
+    document.getElementById('scheduler-weather-preview').textContent=`发送格式：今日${start}–${end}｜${location||'地区'}：气温、天气、降雨概率和降水量。出行提醒。实际数值在发送时获取。`;
+    updateSchedulerCreateSubmit();
+}
+function updateSchedulerCreateSubmit(){
+    const weather=document.getElementById('scheduler-create-template').value==='weather_hourly_brief';
+    document.getElementById('scheduler-create-submit').disabled=!document.getElementById('scheduler-create-name').value.trim()||(!weather&&!document.getElementById('scheduler-create-content').value.trim())||(weather&&!document.getElementById('scheduler-weather-location').value.trim());
+}
+function toggleSchedulerCreateFields(event){
+    const repeat=document.getElementById('scheduler-create-repeat').value,rawToggle=document.getElementById('scheduler-create-raw-cron-toggle');
+    if(event?.target?.id==='scheduler-create-repeat')rawToggle.checked=false;
+    const raw=rawToggle.checked;
+    for(const [id,visible] of [['interval',repeat==='interval'],['date',repeat==='once'],['weekday',repeat==='weekly'],['monthday',repeat==='monthly'],['yearly',repeat==='yearly'],['cron',raw]])document.getElementById(`scheduler-create-${id}-wrap`).classList.toggle('hidden',!visible);
+    document.getElementById('scheduler-create-time').disabled=repeat==='interval';
+    const type=repeat==='interval'?'interval':repeat==='once'?'once':'cron';document.getElementById('scheduler-create-type').value=type;
+    const time=document.getElementById('scheduler-create-time').value||'09:00',[hour,minute]=time.split(':').map(Number);
+    const patterns={daily:`${minute} ${hour} * * *`,weekdays:`${minute} ${hour} * * 1-5`,weekly:`${minute} ${hour} * * ${document.getElementById('scheduler-create-weekday').value}`,monthly:`${minute} ${hour} ${document.getElementById('scheduler-create-monthday').value} * *`};
+    const yearly=document.getElementById('scheduler-create-yearly').value;if(yearly){const [,month,day]=yearly.split('-');patterns.yearly=`${minute} ${hour} ${Number(day)} ${Number(month)} *`;}
+    if(!raw&&patterns[repeat])document.getElementById('scheduler-create-cron').value=patterns[repeat];
+    if(raw&&event?.target?.id==='scheduler-create-time'){
+        const parts=document.getElementById('scheduler-create-cron').value.trim().split(/\s+/);
+        if(parts.length===5){parts[0]=String(minute);parts[1]=String(hour);document.getElementById('scheduler-create-cron').value=parts.join(' ');}
+    }
+    document.getElementById('scheduler-create-once').value=`${document.getElementById('scheduler-create-date').value}T${time}`;
+}
+function toggleSchedulerManualTarget(){
+    const select=document.getElementById('scheduler-create-target'),target=schedulerDeliveryTargets[Number(select.value)],wrap=document.getElementById('scheduler-create-manual-wrap'),input=document.getElementById('scheduler-create-receiver');
+    wrap.classList.toggle('hidden',!target?.manual);if(input)input.placeholder=target?.channel==='webhook'?'https://example.com/webhook':'用户、群聊、邮箱或通道要求的 ID';
+    document.getElementById('scheduler-create-wecom').checked=target?.channel==='wecom_bot';
+    const summary=document.getElementById('scheduler-weather-target-summary');
+    if(summary)summary.textContent=target?`接收通道：${target.channel_label||target.channel}${target.receiver_name&&target.channel!=='web'?' · '+target.receiver_name:''}${target.manual?'（请填写接收目标）':''}`:'接收通道：请选择';
+}
+function toggleSchedulerCreateWecom(){
+    const checked=document.getElementById('scheduler-create-wecom').checked,select=document.getElementById('scheduler-create-target');
+    const index=schedulerDeliveryTargets.findIndex(target=>target.channel===(checked?'wecom_bot':'web')&&!target.manual);
+    const manualIndex=checked?schedulerDeliveryTargets.findIndex(target=>target.channel==='wecom_bot'&&target.manual):-1;
+    const chosen=index>=0?index:manualIndex;
+    if(chosen<0){document.getElementById('scheduler-create-wecom').checked=false;document.getElementById('scheduler-create-status').textContent=checked?'企业微信通道尚未连接，请在通道与连接中配置。':'';return;}
+    select.value=String(chosen);toggleSchedulerManualTarget();
+    if(checked&&schedulerDeliveryTargets[chosen].manual){document.getElementById('scheduler-create-advanced').classList.remove('hidden');document.getElementById('scheduler-create-status').textContent='请填写企业微信接收目标 ID';document.getElementById('scheduler-create-receiver').focus();}
+    else document.getElementById('scheduler-create-status').textContent='';
+}
 function renderSchedulerCreatePreview(preview){
     const box=document.getElementById('scheduler-create-preview');if(!box)return;
     if(!preview){box.classList.add('hidden');box.innerHTML='';return;}
@@ -14839,10 +15437,32 @@ function renderSchedulerCreatePreview(preview){
     box.classList.remove('hidden');
 }
 async function createSchedulerTask(){
+    toggleSchedulerCreateFields();
+    const weather=document.getElementById('scheduler-create-template').value==='weather_hourly_brief';
     const type=document.getElementById('scheduler-create-type').value,status=document.getElementById('scheduler-create-status'),target=schedulerDeliveryTargets[Number(document.getElementById('scheduler-create-target').value)];if(!target){status.textContent='请选择结果发送通道';return;}
     const receiver=target.channel==='web'?sessionId:(target.manual?document.getElementById('scheduler-create-receiver').value.trim():target.receiver);
-    const payload={name:document.getElementById('scheduler-create-name').value.trim(),content:document.getElementById('scheduler-create-content').value.trim(),action_type:document.getElementById('scheduler-create-action').value,schedule_type:type,interval_seconds:Number(document.getElementById('scheduler-create-interval').value||0)*Number(document.getElementById('scheduler-create-unit').value||60),cron:document.getElementById('scheduler-create-cron').value.trim(),run_at:document.getElementById('scheduler-create-once').value,silent:document.getElementById('scheduler-create-silent').checked,session_id:sessionId,channel_type:target.channel,receiver,receiver_name:target.manual?receiver:target.receiver_name,is_group:target.manual?document.getElementById('scheduler-create-is-group').checked:!!target.is_group};
-    if(!payload.name||!payload.content){status.textContent='请填写任务名称和执行内容';return;}if(!payload.receiver){status.textContent='请填写消息接收目标';return;}status.className='text-sm text-blue-600 mt-4';status.textContent='正在预演下一次执行和通知通道…';try{const previewResponse=await fetch('/api/scheduler',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,preview_only:true})}),previewData=await previewResponse.json();if(previewData.status!=='success')throw new Error(previewData.message||'预演失败');renderSchedulerCreatePreview(previewData.preview);status.textContent='预演完成，正在创建任务…';const r=await fetch('/api/scheduler',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),d=await r.json();if(d.status!=='success')throw new Error(d.message);renderSchedulerCreatePreview(d.preview);status.className='text-sm text-emerald-600 mt-4';status.textContent='任务已创建，已记录预演结果。';setTimeout(()=>{closeSchedulerCreator();tasksLoaded=false;loadTasksView();},650);}catch(error){status.className='text-sm text-red-500 mt-4';status.textContent=error.message;}
+    const payload={name:document.getElementById('scheduler-create-name').value.trim(),content:document.getElementById('scheduler-create-content').value.trim(),action_type:weather?'tool_call':document.getElementById('scheduler-create-action').value,schedule_type:type,interval_seconds:Number(document.getElementById('scheduler-create-interval').value||0)*Number(document.getElementById('scheduler-create-unit').value||60),cron:document.getElementById('scheduler-create-cron').value.trim(),run_at:document.getElementById('scheduler-create-once').value,silent:document.getElementById('scheduler-create-silent').checked,session_id:sessionId,channel_type:target.channel,receiver,receiver_name:target.manual?receiver:target.receiver_name,is_group:target.manual?document.getElementById('scheduler-create-is-group').checked:!!target.is_group};
+    if(weather){
+        const start=document.getElementById('scheduler-weather-start').value,end=document.getElementById('scheduler-weather-end').value;
+        const startMinutes=Number(start.slice(0,2))*60+Number(start.slice(3,5)),endMinutes=Number(end.slice(0,2))*60+Number(end.slice(3,5));
+        if(!/^\d{2}:\d{2}$/.test(start)||!/^\d{2}:\d{2}$/.test(end)||startMinutes>=endMinutes){status.className='scheduler-creator-status error';status.textContent='关注结束时间须晚于开始时间';return;}
+        Object.assign(payload,{template_type:'weather_hourly_brief',weather_location:document.getElementById('scheduler-weather-location').value.trim(),weather_start_time:start,weather_end_time:end,weather_hour_start:Math.floor(startMinutes/60),weather_hour_end:Math.min(23,Math.ceil(endMinutes/60))});
+    }
+    if(!payload.name||!payload.content){status.textContent='请填写任务名称和执行内容';return;}if(!payload.receiver){status.textContent='请填写消息接收目标';return;}
+    if(document.getElementById('scheduler-create-repeat').value==='biweekly'){status.textContent='每双周暂不支持';return;}
+    if(document.getElementById('scheduler-create-repeat').value==='monthly'&&!(Number(document.getElementById('scheduler-create-monthday').value)>=1&&Number(document.getElementById('scheduler-create-monthday').value)<=31)){status.textContent='每月日期须为 1 到 31 日';return;}
+    if(type==='once'&&(!payload.run_at||new Date(payload.run_at)<=new Date())){status.textContent='请选择未来的执行时间';return;}
+    if(type==='interval'&&(!Number.isFinite(payload.interval_seconds)||payload.interval_seconds<60)){status.textContent='间隔至少为 1 分钟';return;}
+    const submit=document.getElementById('scheduler-create-submit');submit.disabled=true;status.className='scheduler-creator-status';status.textContent='正在创建任务…';
+    try{
+        let url='/api/scheduler',requestBody=payload;
+        if(schedulerEditingTaskId){
+            url='/api/scheduler/update';
+            const schedule=type==='cron'?{type,expression:payload.cron}:type==='once'?{type,run_at:payload.run_at}:{type,seconds:payload.interval_seconds};
+            requestBody={task_id:schedulerEditingTaskId,name:payload.name,schedule,action:{type:'tool_call',template:{type:'weather_hourly_brief',location:payload.weather_location,start_time:payload.weather_start_time,end_time:payload.weather_end_time,hour_start:payload.weather_hour_start,hour_end:payload.weather_hour_end},call_name:'weather',call_params:{location:payload.weather_location,hour_start:payload.weather_hour_start,hour_end:payload.weather_hour_end},task_description:payload.content,channel_type:payload.channel_type,receiver:payload.receiver,receiver_name:payload.receiver_name,is_group:payload.is_group,notify_session_id:payload.session_id}};
+        }
+        const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(requestBody)}),d=await r.json();if(d.status!=='success')throw new Error(d.message||'保存失败');renderSchedulerCreatePreview(d.preview);status.className='scheduler-creator-status success';status.textContent=schedulerEditingTaskId?'任务已更新':'任务已创建';setTimeout(()=>{closeSchedulerCreator();if(currentView==='common-functions')navigateTo('tasks');tasksLoaded=false;loadTasksView();},650);
+    }catch(error){status.className='scheduler-creator-status error';status.textContent=error.message;updateSchedulerCreateSubmit();}
 }
 function refreshTasksView() {
     const btn = document.getElementById('task-refresh-btn');
@@ -14868,7 +15488,18 @@ function refreshTasksView() {
 
 function schedulerTaskPlanText(schedule) {
     schedule = schedule || {};
-    if (schedule.type === 'cron') return `Cron ${schedule.expression || '未设置'}`;
+    if (schedule.type === 'cron') {
+        const expression=String(schedule.expression||'').trim(),parts=expression.split(/\s+/);
+        if(parts.length===5&&/^\d+$/.test(parts[0])&&/^\d+$/.test(parts[1])){
+            const time=`${parts[1].padStart(2,'0')}:${parts[0].padStart(2,'0')}`;
+            if(parts[2]==='*'&&parts[3]==='*'&&parts[4]==='*')return `每天 ${time}`;
+            if(parts[2]==='*'&&parts[3]==='*'&&parts[4]==='1-5')return `工作日 ${time}`;
+            if(parts[2]==='*'&&parts[3]==='*'&&/^\d$/.test(parts[4]))return `每周${'日一二三四五六'[Number(parts[4])]} ${time}`;
+            if(/^\d+$/.test(parts[2])&&parts[3]==='*'&&parts[4]==='*')return `每月${parts[2]}日 ${time}`;
+            if(/^\d+$/.test(parts[2])&&/^\d+$/.test(parts[3])&&parts[4]==='*')return `每年${parts[3]}月${parts[2]}日 ${time}`;
+        }
+        return `Cron ${expression||'未设置'}`;
+    }
     if (schedule.type === 'interval') {
         const seconds = Number(schedule.seconds || 0);
         const hours = Math.floor(seconds / 3600);
@@ -14878,7 +15509,7 @@ function schedulerTaskPlanText(schedule) {
         if (hours > 0) parts.push(`${hours}小时`);
         if (mins > 0) parts.push(`${mins}分钟`);
         if ((secs > 0 || !parts.length) && seconds > 0) parts.push(`${secs}秒`);
-        return `Every ${parts.join('') || '未设置'}`;
+        return `每隔 ${parts.join('') || '未设置'}`;
     }
     return schedule.type === 'once' ? '单次执行' : (schedule.type || '未设置');
 }
@@ -14913,6 +15544,7 @@ async function bulkToggleSchedulerTasks(enabled){
 
 function setSchedulerTaskFilter(filter) {
     schedulerTaskFilter = filter || 'all';
+    document.getElementById('scheduler-main-tasks')?.classList.toggle('active',schedulerTaskFilter!=='history');
     ['all','enabled','paused','history'].forEach(key => {
         document.getElementById(`scheduler-filter-${key}`)?.classList.toggle('active', key === schedulerTaskFilter);
     });
@@ -14921,7 +15553,7 @@ function setSchedulerTaskFilter(filter) {
     document.getElementById('scheduler-bulk-toggle')?.classList.toggle('hidden', schedulerTaskFilter === 'history');
     document.getElementById('scheduler-bulk-bar')?.classList.toggle('hidden',schedulerTaskFilter==='history'||!schedulerBulkMode);
     const search = document.getElementById('scheduler-task-query');
-    if (search) search.placeholder = schedulerTaskFilter === 'history' ? '搜索运行历史' : '搜索自动化';
+    if (search) search.placeholder = schedulerTaskFilter === 'history' ? '搜索运行记录' : '搜索定时任务';
     document.getElementById('scheduler-filter-toggle')?.classList.toggle('hidden', schedulerTaskFilter === 'history');
     document.getElementById('scheduler-advanced-filters')?.classList.toggle('hidden', schedulerTaskFilter === 'history' || !schedulerAdvancedFiltersOpen);
     if (schedulerTaskFilter === 'history') {
@@ -14941,6 +15573,12 @@ function setSchedulerTaskFilter(filter) {
 }
 
 let schedulerAdvancedFiltersOpen = false;
+function toggleSchedulerSearch(){
+    const row=document.getElementById('scheduler-search-row'),opening=row?.classList.contains('hidden');
+    row?.classList.toggle('hidden',!opening);
+    document.getElementById('scheduler-search-toggle')?.setAttribute('aria-expanded',String(!!opening));
+    if(opening)document.getElementById('scheduler-task-query')?.focus();
+}
 function toggleSchedulerAdvancedFilters() {
     schedulerAdvancedFiltersOpen = !schedulerAdvancedFiltersOpen;
     document.getElementById('scheduler-advanced-filters')?.classList.toggle('hidden', !schedulerAdvancedFiltersOpen);
@@ -15001,6 +15639,9 @@ function schedulerFriendlyStatusLabel(status) {
         skipped_duplicate: '已合并重复结果',
         skipped_instance: '旧实例已拦截',
         retrying: '等待自动重试',
+        recovery_scheduled: '中断后已安排重试',
+        interrupted_unverified: '发送状态待核对',
+        interrupted_needs_review: '中断待检查',
         running: '执行中',
     }[status] || '等待执行';
 }
@@ -15023,6 +15664,9 @@ function schedulerFriendlySummary(task) {
     if (status === 'skipped_duplicate') return raw || '本次结果与近期内容重复，已自动合并，避免重复通知。';
     if (status === 'skipped_instance') return raw || '检测到旧后端实例触发，已拦截以避免重复执行。';
     if (status === 'retrying') return raw || '通道暂未就绪，系统会在当前执行窗口内自动重试。';
+    if (status === 'recovery_scheduled') return raw || '发送前中断，系统已安排安全重试。';
+    if (status === 'interrupted_unverified') return raw || '执行中断时可能已经发出，本次不会自动重复发送；请查看运行记录。';
+    if (status === 'interrupted_needs_review') return raw || '执行中断，需核对已完成的步骤后继续。';
     if (status === 'success') return raw || '任务执行完成，结果已记录。';
     return raw || '尚未产生执行结果。';
 }
@@ -15215,18 +15859,42 @@ document.addEventListener('click', event => {
 
 async function cloneSchedulerTask(task) {
     await openSchedulerCreator();
-    document.getElementById('scheduler-create-name').value = `${task.name || '自动化'}（副本）`;
-    document.getElementById('scheduler-create-content').value = task.action?.content || task.action?.task_description || '';
-    document.getElementById('scheduler-create-action').value = task.action?.type || 'agent_task';
+    const template=task.action?.template;
+    if(template?.type==='weather_hourly_brief'){
+        document.getElementById('scheduler-create-template').value='weather_hourly_brief';
+        document.getElementById('scheduler-weather-location').value=template.location||'';
+        document.getElementById('scheduler-weather-start').value=template.start_time||`${String(template.hour_start).padStart(2,'0')}:00`;
+        document.getElementById('scheduler-weather-end').value=template.end_time||`${String(template.hour_end).padStart(2,'0')}:00`;
+        toggleSchedulerCreateTemplate();
+    }else{
+        document.getElementById('scheduler-create-content').value=task.action?.content||task.action?.task_description||'';
+        document.getElementById('scheduler-create-action').value=task.action?.type||'agent_task';
+    }
     const schedule = task.schedule || {};
     const type = ['cron', 'interval', 'once'].includes(schedule.type) ? schedule.type : 'cron';
-    document.getElementById('scheduler-create-type').value = type;
-    document.getElementById('scheduler-create-cron').value = schedule.expression || '0 9 * * *';
+    const repeat=document.getElementById('scheduler-create-repeat'),cron=String(schedule.expression||'0 9 * * *');
+    document.getElementById('scheduler-create-cron').value=cron;
+    if(type==='interval')repeat.value='interval';
+    else if(type==='once')repeat.value='once';
+    else{
+        const parts=cron.trim().split(/\s+/);
+        if(parts.length===5&&/^\d+$/.test(parts[0])&&/^\d+$/.test(parts[1])){
+            document.getElementById('scheduler-create-time').value=`${parts[1].padStart(2,'0')}:${parts[0].padStart(2,'0')}`;
+            if(parts[2]==='*'&&parts[3]==='*'&&parts[4]==='*')repeat.value='daily';
+            else if(parts[2]==='*'&&parts[3]==='*'&&parts[4]==='1-5')repeat.value='weekdays';
+            else if(parts[2]==='*'&&parts[3]==='*'&&/^\d$/.test(parts[4])){repeat.value='weekly';document.getElementById('scheduler-create-weekday').value=parts[4];}
+            else if(/^\d+$/.test(parts[2])&&parts[3]==='*'&&parts[4]==='*'){repeat.value='monthly';document.getElementById('scheduler-create-monthday').value=parts[2];}
+            else if(/^\d+$/.test(parts[2])&&/^\d+$/.test(parts[3])&&parts[4]==='*'){repeat.value='yearly';document.getElementById('scheduler-create-yearly').value=`2026-${parts[3].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;}
+            else repeat.value='daily';
+        }else repeat.value='daily';
+        if(repeat.value==='daily'&&cron!==`${parts[0]} ${parts[1]} * * *`){document.getElementById('scheduler-create-raw-cron-toggle').checked=true;document.getElementById('scheduler-create-advanced').classList.remove('hidden');}
+    }
     const seconds = Number(schedule.seconds || 0);
     const unit = seconds >= 86400 && seconds % 86400 === 0 ? 86400 : seconds >= 3600 && seconds % 3600 === 0 ? 3600 : 60;
     document.getElementById('scheduler-create-unit').value = String(unit);
     document.getElementById('scheduler-create-interval').value = String(Math.max(1, Math.round(seconds / unit)));
-    document.getElementById('scheduler-create-once').value = String(schedule.run_at || task.next_run_at || '').slice(0, 16);
+    const runAt=String(schedule.run_at || task.next_run_at || '').slice(0, 16);
+    if(type==='once'&&runAt){document.getElementById('scheduler-create-date').value=runAt.slice(0,10);document.getElementById('scheduler-create-time').value=runAt.slice(11,16);}
     document.getElementById('scheduler-create-silent').checked = !!task.action?.silent;
     const targetSelect = document.getElementById('scheduler-create-target');
     const channel = task.action?.channel_type || 'web';
@@ -15239,6 +15907,17 @@ async function cloneSchedulerTask(task) {
     if (selectedIndex === manualIndex && manualIndex >= 0) document.getElementById('scheduler-create-receiver').value = receiver;
     document.getElementById('scheduler-create-is-group').checked = !!task.action?.is_group;
     toggleSchedulerCreateFields();
+    document.getElementById('scheduler-create-name').value=`${task.name||'自动化'}（副本）`;
+    updateSchedulerCreateSubmit();
+}
+async function openSchedulerTaskEditor(task){
+    if(task.action?.template?.type!=='weather_hourly_brief'){openTaskEditModal(task);return;}
+    await cloneSchedulerTask(task);
+    schedulerEditingTaskId=task.id;
+    document.getElementById('scheduler-create-name').value=task.name||'天气时段提醒';
+    document.querySelector('#scheduler-creator-modal .scheduler-creator-heading h2').textContent='编辑天气提醒';
+    document.getElementById('scheduler-create-submit').textContent='保存';
+    updateSchedulerCreateSubmit();
 }
 
 function deleteSchedulerTaskFromRow(task) {
@@ -15365,7 +16044,7 @@ function loadTasksView() {
             if (!isEnabled) card.classList.add('opacity-50');
             const schedule = task.schedule || {};
             const planText = schedulerTaskPlanText(schedule);
-            const nextRun = isEnabled ? schedulerTaskTimeText(task.next_run_at, '待计算') : '不适用';
+            const nextRun = !isEnabled ? '已暂停' : (task.last_run_status==='running'||task.running) ? '运行中' : `${schedulerTaskTimeText(task.next_run_at, '待计算')}${task.next_run_at?'执行':''}`;
             const action = task.action || {};
             const taskContent = schedulerFriendlyTaskPreview(action.content || action.task_description || '');
             const statusLabel=schedulerFriendlyStatusLabel(task.last_run_status);
@@ -15376,14 +16055,13 @@ function loadTasksView() {
             const manualStatus=task.last_manual_run_status||'';
             const manualSummary=task.last_manual_run_summary||'';
             const manualText=manualStatus?`最近手动执行：${(({running:'执行中',success:'执行完成',failed:'执行失败',empty:'暂无内容',skipped_duplicate:'已跳过重复',skipped_instance:'实例保护跳过'})[manualStatus]||manualStatus)}${manualSummary?` · ${manualSummary}`:''}`:'';
-            const toggleId = `toggle-${index}-${String(task.id || 'task').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
             const lastRunPrefix = task.last_run_status === 'success' ? '✓' : task.last_run_status === 'retrying' ? '↻' : task.last_run_status ? '×' : '↪';
             const lastRun = task.last_run_at ? `${lastRunPrefix} ${schedulerTaskTimeText(task.last_run_at)}` : '不适用';
             const statusIcon = task.last_run_status === 'failed' || task.last_run_status === 'empty'
                 ? '<i class="fas fa-triangle-exclamation automation-row-warn"></i>'
                 : task.last_run_status === 'retrying'
                 ? '<i class="fas fa-spinner automation-row-paused"></i>'
-                : (isEnabled ? '<i class="fas fa-circle automation-row-ok"></i>' : '<i class="fas fa-pause automation-row-paused"></i>');
+                : '';
             const channelLabel=escapeHtml(({web:'网页会话',weixin:'微信',webhook:'Webhook',email:'邮箱'})[action.channel_type]||action.channel_type||'网页会话');
             card.innerHTML = `
                 <div class="automation-row-name">
@@ -15399,11 +16077,9 @@ function loadTasksView() {
                 <div class="automation-row-control">
                     <div class="automation-row-actions">
                         <button type="button" class="task-run-now" title="${t('task_run_now')}"><i class="fas fa-play"></i><span>${t('task_run_now')}</span></button>
-                        <label class="scheduler-row-toggle relative inline-flex items-center cursor-pointer" for="${toggleId}" title="${isEnabled ? '已启用' : '已暂停'}">
-                            <input type="checkbox" id="${toggleId}" class="sr-only peer" ${isEnabled ? 'checked' : ''}>
-                            <span class="scheduler-toggle-track"></span>
-                        </label>
-                        <div class="scheduler-row-menu-wrap"><button type="button" class="task-menu-toggle" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fas fa-ellipsis"></i></button><div class="scheduler-row-menu hidden"><button type="button" data-action="edit">编辑</button><button type="button" data-action="clone">克隆</button>${action.channel_type === 'web' ? '<button type="button" data-action="result">查看结果</button>' : ''}<button type="button" data-action="history">运行历史</button><button type="button" data-action="delete" class="danger">移除</button></div></div>
+                        <button type="button" class="task-edit" title="编辑任务" aria-label="编辑任务"><i class="far fa-pen-to-square"></i></button>
+                        <div class="scheduler-row-menu-wrap"><button type="button" class="task-menu-toggle" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fas fa-ellipsis"></i></button><div class="scheduler-row-menu hidden"><button type="button" data-action="history"><i class="far fa-eye"></i>查看运行记录</button><button type="button" data-action="edit"><i class="far fa-circle-play"></i>打开任务</button><button type="button" data-action="clone"><i class="far fa-copy"></i>克隆任务</button>${action.channel_type === 'web' ? '<button type="button" data-action="result"><i class="far fa-file-lines"></i>查看结果</button>' : ''}<button type="button" data-action="delete" class="danger"><i class="far fa-trash-can"></i>删除</button></div></div>
+                        <button type="button" class="scheduler-row-toggle" role="switch" aria-label="${isEnabled ? '停用' : '启用'} ${escapeHtml(task.name || '定时任务')}" aria-checked="${isEnabled}" title="${isEnabled ? '点击停用' : '点击启用'}"><span class="scheduler-toggle-track" aria-hidden="true"></span></button>
                     </div>
                 </div>`;
             const runButton = card.querySelector('.task-run-now');
@@ -15411,43 +16087,52 @@ function loadTasksView() {
                 e.stopPropagation();
                 runTaskNow(task, runButton);
             });
+            card.querySelector('.task-edit').addEventListener('click', e => { e.stopPropagation(); openSchedulerTaskEditor(task); });
             const menu = card.querySelector('.scheduler-row-menu');
             const menuToggle = card.querySelector('.task-menu-toggle');
             menuToggle.addEventListener('click', e => { e.stopPropagation(); const opening=menu.classList.contains('hidden'); closeSchedulerRowMenus(menu); menu.classList.toggle('hidden',!opening); menuToggle.setAttribute('aria-expanded',String(opening)); });
             menu.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', e => {
                 e.stopPropagation(); menu.classList.add('hidden'); menuToggle.setAttribute('aria-expanded','false');
                 const actionName=button.dataset.action;
-                if(actionName==='edit') openTaskEditModal(task);
+                if(actionName==='edit') openSchedulerTaskEditor(task);
                 else if(actionName==='clone') cloneSchedulerTask(task);
                 else if(actionName==='delete') deleteSchedulerTaskFromRow(task);
                 else if(actionName==='history') { document.getElementById('scheduler-task-query').value=task.name||''; setSchedulerTaskFilter('history'); }
                 else if(actionName==='result') { const sid=action.notify_session_id||action.receiver; navigateTo('chat'); if(sid&&sid!=='web_user') switchSession(sid); }
             }));
-            const checkbox = card.querySelector('.scheduler-row-toggle input[type="checkbox"]');
-            checkbox.addEventListener('change', function() {
-                const newEnabled = this.checked;
-                fetch('/api/scheduler/toggle', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({task_id: task.id, enabled: newEnabled})
-                }).then(r => r.json()).then(res => {
-                    if (res.status === 'success') {
-                        card.dataset.enabled = newEnabled ? '1' : '0';
-                        if (newEnabled) {
-                            card.classList.remove('opacity-50');
-                        } else {
-                            card.classList.add('opacity-50');
-                        }
-                        filterSchedulerTasks();
-                    } else {
-                        this.checked = !newEnabled;
+            const toggleButton = card.querySelector('.scheduler-row-toggle');
+            toggleButton.addEventListener('click', async e => {
+                e.stopPropagation();
+                if (toggleButton.disabled) return;
+                const newEnabled = task.enabled === false;
+                toggleButton.disabled = true;
+                toggleButton.classList.add('is-saving');
+                try {
+                    const response = await fetch('/api/scheduler/toggle', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({task_id: task.id, enabled: newEnabled})
+                    });
+                    const result = await response.json();
+                    if (!response.ok || result.status !== 'success' || !result.task || result.task.enabled !== newEnabled) {
+                        throw new Error(result.message || '任务状态未保存');
                     }
-                }).catch(() => { this.checked = !newEnabled; });
+                    tasksLoaded = false;
+                    loadTasksView();
+                    if (typeof _wsToast === 'function') _wsToast(newEnabled ? '定时任务已启用' : '定时任务已停用');
+                } catch (error) {
+                    const message = `切换失败：${error.message || error}`;
+                    if (typeof _wsToast === 'function') _wsToast(message);
+                    else alert(message);
+                } finally {
+                    toggleButton.disabled = false;
+                    toggleButton.classList.remove('is-saving');
+                }
             });
             // Card click event (excluding toggle switch clicks)
             card.addEventListener('click', function(e) {
                 if (!e.target.closest('button') && !e.target.closest('label') && !e.target.closest('input[type="checkbox"]')) {
-                    openTaskEditModal(task);
+                    openSchedulerTaskEditor(task);
                 }
             });
             card.style.cursor = 'pointer';
@@ -15935,31 +16620,49 @@ function automationTaskRelativeTime(value,empty='不适用'){
     if(abs<day)return `${Math.round(abs/hour)}小时${suffix}`;
     return `${Math.round(abs/day)}天${suffix}`;
 }
-function decorateAutomationTaskRow(card,task){
+function automationGridCardHtml({title,preview,schedule,next,enabled}){
+    return `<div class="automation-card-body"><div class="automation-card-title"><b>${escapeHtml(title)}</b></div><p title="${escapeHtml(preview)}">${escapeHtml(preview)}</p></div>
+        <div class="automation-card-controls"><button type="button" class="automation-card-run" title="立即执行" aria-label="立即执行"><i class="far fa-play-circle"></i></button><button type="button" class="automation-card-edit" title="编辑任务" aria-label="编辑任务"><i class="far fa-pen-to-square"></i></button><div class="automation-card-menu-wrap"><button type="button" class="automation-card-more" title="更多操作" aria-label="更多操作" aria-expanded="false"><i class="fas fa-ellipsis"></i></button><div class="automation-card-menu hidden"><button type="button" data-action="history"><i class="far fa-eye"></i>查看运行记录</button><button type="button" data-action="open"><i class="far fa-comment-dots"></i>打开任务</button><button type="button" data-action="template"><i class="far fa-bookmark"></i>设为模板</button><button type="button" data-action="delete" class="danger"><i class="far fa-trash-can"></i>删除</button></div></div><button type="button" class="automation-card-switch" role="switch" aria-checked="${enabled}" aria-label="${enabled?'停用':'启用'} ${escapeHtml(title)}" title="${enabled?'点击停用':'点击启用'}"><span aria-hidden="true"></span></button></div>
+        <div class="automation-card-footer"><span><i class="far fa-clock"></i>${escapeHtml(schedule)}</span><span>${escapeHtml(enabled?next:'已暂停')}</span></div>`;
+}
+function bindAutomationCardMenu(card,handlers){
+    const toggle=card.querySelector('.automation-card-more'),menu=card.querySelector('.automation-card-menu');
+    toggle?.addEventListener('click',event=>{event.stopPropagation();document.querySelectorAll('.automation-card-menu:not(.hidden)').forEach(other=>{if(other!==menu)other.classList.add('hidden');});const opening=menu.classList.contains('hidden');menu.classList.toggle('hidden',!opening);toggle.setAttribute('aria-expanded',String(opening));});
+    menu?.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',event=>{event.stopPropagation();menu.classList.add('hidden');toggle.setAttribute('aria-expanded','false');handlers[button.dataset.action]?.();}));
+    if(!handlers.template)menu?.querySelector('[data-action="template"]')?.remove();
+}
+async function setAutomationCardEnabled(card,task,enabled,endpoint){
+    const button=card.querySelector('.automation-card-switch');
+    if(!button||button.disabled)return;
+    button.disabled=true;button.classList.add('is-saving');
+    try{
+        const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task_id:task.id,enabled})});
+        const data=await response.json();
+        if(!response.ok||data.status!=='success')throw new Error(data.message||'任务状态未保存');
+        if(data.task&&Boolean(data.task.enabled)!==enabled)throw new Error('服务器未保存任务状态');
+        await loadAutomationTasks();
+        _wsToast?.(enabled?'定时任务已启用':'定时任务已停用');
+    }catch(error){_wsToast?.(`切换失败：${error.message||error}`);}
+    finally{button.disabled=false;button.classList.remove('is-saving');}
+}
+function decorateAutomationTaskRow(card,task,toggleEndpoint){
     const merged=task||{},enabled=card.dataset.enabled==='1';
     const title=card.querySelector('h3,h4')?.textContent.trim()||merged.name||'未命名任务';
     const sub=card.querySelector('p.text-xs, p.text-sm')?.textContent.trim()||merged.summary||merged.description||'';
-    const lastStatus=merged.last_run_status||merged.last_status||'';
-    const ok=/success|完成|成功/.test(String(lastStatus)),bad=/fail|error|失败|异常|暂无|无内容/.test(String(lastStatus));
-    const statusIcon=bad?'<i class="fas fa-triangle-exclamation automation-row-warn"></i>':enabled?'<i class="fas fa-circle automation-row-ok"></i>':'<i class="fas fa-pause automation-row-paused"></i>';
-    const schedule=automationTaskPlanText(merged);
-    const next=enabled?automationTaskRelativeTime(merged.next_run_at,'不适用'):'不适用';
-    const last=merged.last_run_at?`${ok?'✓':bad?'×':'↪'} ${automationTaskRelativeTime(merged.last_run_at)}`:'不适用';
+    const schedule=String(merged.schedule||merged.cron||merged.schedule_text||'未设置').replace(/^每天/,'每天 ').replace(/^每周/,'每周 ');
+    const next=automationTaskRelativeTime(merged.next_run_at,'待计算')+(merged.next_run_at?'执行':'');
     const actions=card.querySelector('.flex.flex-wrap.gap-2.mt-4,.flex.gap-2.mt-4.flex-wrap');
-    if(actions){
-        actions.classList.add('automation-row-actions');
-        actions.querySelectorAll('button').forEach(button=>{
-            if(button.querySelector('i'))return;
-            const text=(button.textContent||'').trim();
-            const icon=/执行|读取|检查|抓取|汇总|报告/.test(text)?'fa-play':/停用|暂停/.test(text)?'fa-toggle-on':/启用/.test(text)?'fa-toggle-off':/删除/.test(text)?'fa-trash-can':/编辑/.test(text)?'fa-pen':'fa-ellipsis';
-            button.innerHTML=`<i class="fas ${icon}"></i><span>${escapeHtml(text)}</span>`;
-            button.title=text;
-        });
-    }
-    card.classList.add('automation-table-row');
-    card.innerHTML=`<div class="automation-row-name"><div>${statusIcon}<b>${escapeHtml(title)}</b></div>${sub?`<p>${escapeHtml(sub).slice(0,88)}</p>`:''}</div><div class="automation-row-plan">${escapeHtml(schedule)}</div><div class="automation-row-next">${escapeHtml(next)}</div><div class="automation-row-last ${bad?'is-bad':ok?'is-ok':''}">${escapeHtml(last)}</div><div class="automation-row-control"></div>`;
-    const control=card.querySelector('.automation-row-control');
-    if(actions)control.appendChild(actions);
+    const buttons=[...(actions?.querySelectorAll('button')||[])];
+    const run=buttons.find(button=>/执行|运行|抓取|读取|检查|汇总|报告/.test(button.textContent||''));
+    const edit=actions?.querySelector('.automation-edit-btn');
+    const remove=buttons.find(button=>/删除/.test(button.textContent||''));
+    const template=actions?.querySelector('.automation-template-btn');
+    card.classList.add('automation-grid-card');
+    card.innerHTML=automationGridCardHtml({title,preview:sub,schedule,next,enabled});
+    card.querySelector('.automation-card-run')?.addEventListener('click',event=>{event.stopPropagation();run?.click();});
+    card.querySelector('.automation-card-edit')?.addEventListener('click',event=>{event.stopPropagation();edit?.click();});
+    card.querySelector('.automation-card-switch')?.addEventListener('click',event=>{event.stopPropagation();setAutomationCardEnabled(card,merged,!enabled,toggleEndpoint);});
+    bindAutomationCardMenu(card,{history:()=>openAutomationTaskLinkedView('runs',encodeURIComponent(merged.id||title)),open:()=>edit?.click(),template:template?()=>template.click():null,delete:()=>remove?.click()});
 }
 
 function schedulerAutomationChannelLabel(action){
@@ -15975,41 +16678,19 @@ function schedulerAutomationKindLabel(action){
 function schedulerAutomationCard(task){
     const action=task.action||{},enabled=task.enabled!==false;
     const card=document.createElement('div');
-    card.className='automation-table-row scheduler-task-row';
-    if(!enabled)card.classList.add('opacity-50');
+    card.className='automation-grid-card';
     card.dataset.automationTask=task.id||task.name||'';
     card.dataset.taskId=task.id||'';
     card.dataset.enabled=enabled?'1':'0';
     card.dataset.createdAt=task.created_at||task.updated_at||'';
     const preview=schedulerFriendlyTaskPreview(action.content||action.task_description||'');
-    const channelLabel=schedulerAutomationChannelLabel(action);
-    const statusLabel=schedulerFriendlyStatusLabel(task.last_run_status);
-    const statusSummary=schedulerFriendlySummary(task);
-    const bad=task.last_run_status==='failed'||task.last_run_status==='empty';
-    const ok=task.last_run_status==='success';
-    const statusIcon=bad?'<i class="fas fa-triangle-exclamation automation-row-warn"></i>':enabled?'<i class="fas fa-circle automation-row-ok"></i>':'<i class="fas fa-pause automation-row-paused"></i>';
     const schedule=schedulerTaskPlanText(task.schedule||{});
-    const next=enabled?schedulerTaskTimeText(task.next_run_at,'待计算'):'不适用';
-    const last=task.last_run_at?`${ok?'✓':bad?'×':'↪'} ${schedulerTaskTimeText(task.last_run_at)}`:'不适用';
-    card.innerHTML=`<div class="automation-row-name">
-        <div>${statusIcon}<b>${escapeHtml(task.name||task.id||'未命名任务')}</b></div>
-        <p>${escapeHtml(preview||`${schedulerAutomationKindLabel(action)} · ${channelLabel}`).slice(0,96)}</p>
-        <div class="scheduler-row-status ${bad?'text-red-500':ok?'text-emerald-600':'text-slate-400'}"><span>${escapeHtml(statusLabel)}</span><em>${escapeHtml(statusSummary)}</em></div>
-        <div class="mt-1 text-[11px] text-slate-400"><i class="far fa-calendar-plus mr-1"></i>基础定时器 · ${escapeHtml(channelLabel)} · ID ${escapeHtml(task.id||'')}</div>
-    </div>
-    <div class="automation-row-plan">${escapeHtml(schedule)}</div>
-    <div class="automation-row-next">${escapeHtml(next)}</div>
-    <div class="automation-row-last ${bad?'is-bad':ok?'is-ok':''}">${escapeHtml(last)}</div>
-    <div class="automation-row-control">
-        <div class="automation-row-actions">
-            <button type="button" class="scheduler-automation-run" title="手动执行"><i class="fas fa-play"></i><span>手动执行</span></button>
-            <button type="button" class="scheduler-automation-edit" title="编辑"><i class="far fa-pen-to-square"></i><span>编辑</span></button>
-            <button type="button" class="scheduler-automation-delete text-rose-500" title="删除"><i class="far fa-trash-can"></i><span>删除</span></button>
-        </div>
-    </div>`;
-    card.querySelector('.scheduler-automation-run')?.addEventListener('click',event=>{event.stopPropagation();runAutomationSchedulerTask(task,event.currentTarget);});
-    card.querySelector('.scheduler-automation-edit')?.addEventListener('click',event=>{event.stopPropagation();openTaskEditModal(task);});
-    card.querySelector('.scheduler-automation-delete')?.addEventListener('click',event=>{event.stopPropagation();deleteAutomationSchedulerTask(task);});
+    const next=schedulerTaskTimeText(task.next_run_at,'待计算')+(task.next_run_at?'执行':'');
+    card.innerHTML=automationGridCardHtml({title:task.name||task.id||'未命名任务',preview:preview||`${schedulerAutomationKindLabel(action)} · ${schedulerAutomationChannelLabel(action)}`,schedule,next,enabled});
+    card.querySelector('.automation-card-run')?.addEventListener('click',event=>{event.stopPropagation();runAutomationSchedulerTask(task,event.currentTarget);});
+    card.querySelector('.automation-card-edit')?.addEventListener('click',event=>{event.stopPropagation();openTaskEditModal(task);});
+    card.querySelector('.automation-card-switch')?.addEventListener('click',event=>{event.stopPropagation();setAutomationCardEnabled(card,task,!enabled,'/api/scheduler/toggle');});
+    bindAutomationCardMenu(card,{history:()=>openAutomationTaskLinkedView('runs',encodeURIComponent(task.id||task.name||'')),open:()=>openTaskEditModal(task),delete:()=>deleteAutomationSchedulerTask(task)});
     card.addEventListener('click',event=>{if(!event.target.closest('button'))openTaskEditModal(task);});
     return card;
 }
@@ -16054,7 +16735,7 @@ async function organizeAutomationTaskCards(){
                     title?.parentElement?.appendChild(meta);
                 }
                 attachAutomationTaskClosure(card,merged);
-                decorateAutomationTaskRow(card,merged);
+                decorateAutomationTaskRow(card,merged,url+'/toggle');
                 cards.push(card);
             }
         }catch(error){}
@@ -16073,6 +16754,8 @@ async function organizeAutomationTaskCards(){
     const unified=document.getElementById('automation-unified-tasks');
     unified.innerHTML='';
     cards.sort((a,b)=>String(b.dataset.createdAt||'').localeCompare(String(a.dataset.createdAt||''))).forEach(card=>unified.appendChild(card));
+    const enabledCount=cards.filter(card=>card.dataset.enabled==='1').length;
+    [['all',cards.length],['enabled',enabledCount],['disabled',cards.length-enabledCount]].forEach(([key,count])=>{const node=document.getElementById(`automation-count-${key}`);if(node)node.textContent=`(${count})`;});
     applyAutomationTaskFilter();
 }
 
@@ -16108,7 +16791,64 @@ document.addEventListener('DOMContentLoaded',()=>{const dialog=document.getEleme
 function openSettingsCenter(){document.getElementById('software-menu')?.classList.add('hidden');const modal=document.getElementById('settings-center');modal.classList.remove('hidden');modal.classList.add('flex');selectSettingsSection('system');renderQuickSettingsEditor();mountStorageControlsIntoKnowledge();renderQuickTags();loadRetentionSettings();loadFileSearchRoots();const archive=document.getElementById('settings-weixin-archive-period');if(archive)archive.value=localStorage.getItem(WEIXIN_ARCHIVE_PERIOD_KEY)||'week';syncAgentProcessSetting();setTimeout(()=>applySettingsSemanticColors(),0);}
 function closeSettingsCenter(){restoreSettingsMountedView();if(logsFullscreen)toggleLogsFullscreen();if(dataManagementFullscreen)toggleDataManagementFullscreen(false);const modal=document.getElementById('settings-center');modal.classList.add('hidden');modal.classList.remove('flex');}
 function updateSettingsDataFullscreenButton(visible){const button=document.getElementById('settings-data-fullscreen-button');button?.classList.toggle('hidden',!visible);if(!visible&&dataManagementFullscreen)toggleDataManagementFullscreen(false);}
-function selectSettingsSection(name){restoreSettingsMountedView();updateSettingsDataFullscreenButton(false);document.querySelectorAll('.settings-section').forEach(x=>x.classList.add('hidden'));document.getElementById(`settings-${name}`)?.classList.remove('hidden');const titles={system:t('settings_title'),'user-profile':currentLang==='en'?'User profile':'用户画像','quick-tags':currentLang==='en'?'Quick tags':'快捷标签',about:currentLang==='en'?'About':'关于我们'};document.getElementById('settings-title').textContent=titles[name]||t('settings_title');setSettingsNavActive(name);document.querySelector('#settings-center main').scrollTop=0;if(name==='user-profile')loadSettingsUserProfile();}
+function selectSettingsSection(name){restoreSettingsMountedView();updateSettingsDataFullscreenButton(false);document.querySelectorAll('.settings-section').forEach(x=>x.classList.add('hidden'));document.getElementById(`settings-${name}`)?.classList.remove('hidden');const titles={system:t('settings_title'),'user-profile':currentLang==='en'?'User profile':'用户画像','quick-tags':currentLang==='en'?'Quick tags':'快捷标签','desktop-control':'电脑操控',about:currentLang==='en'?'About':'关于我们'};document.getElementById('settings-title').textContent=titles[name]||t('settings_title');setSettingsNavActive(name);document.querySelector('#settings-center main').scrollTop=0;if(name==='user-profile')loadSettingsUserProfile();if(name==='desktop-control')loadDesktopControlSettings();}
+let desktopControlPolicy=null;
+let desktopControlInstallTimer=null;
+async function loadDesktopControlSettings(){
+    const status=document.getElementById('desktop-control-status');
+    if(status)status.textContent='正在检查本机应用…';
+    try{
+        const response=await fetch('/api/desktop-control',{cache:'no-store'}),data=await response.json();
+        if(data.status!=='success')throw new Error(data.message||'读取失败');
+        desktopControlPolicy=data.policy;
+        document.getElementById('desktop-control-any').checked=!!data.policy.any_app;
+        const icons={wecom:'fas fa-comments',chrome:'fab fa-chrome',edge:'fab fa-edge',excel:'fas fa-file-excel'};
+        const busy=(data.apps||[]).some(app=>app.install_job?.state==='running');
+        document.getElementById('desktop-control-apps').innerHTML=(data.apps||[]).map(app=>{
+            const appId=escapeHtml(app.id),job=app.install_job||{};
+            const detail=job.state==='running'?'正在安装…':app.running?'● 正在运行':app.installed?'已安装 · 未运行':'未安装';
+            const error=job.state==='error'?'<small class="block text-xs text-red-500 mt-1">'+escapeHtml(job.message||'安装失败')+'</small>':'';
+            let action='';
+            if(job.state==='running')action='<button type="button" disabled class="px-3 py-1.5 rounded-lg border text-xs text-slate-400">安装中…</button>';
+            else if(!app.installed && app.can_install)action=`<button type="button" onclick="runDesktopControlAction('${appId}','install')" class="px-3 py-1.5 rounded-lg border text-xs hover:bg-slate-50 dark:hover:bg-white/10">安装并启用</button>`;
+            else if(!app.installed && app.install_url)action=`<button type="button" onclick="openDesktopControlInstallPage('${appId}','${escapeHtml(app.install_url)}')" class="px-3 py-1.5 rounded-lg border text-xs hover:bg-slate-50 dark:hover:bg-white/10">打开安装页</button>`;
+            else if(!app.installed)action='<small class="text-xs text-slate-500">需安装 WinGet</small>';
+            else if(!app.running && app.can_launch)action=`<button type="button" onclick="runDesktopControlAction('${appId}','launch')" class="px-3 py-1.5 rounded-lg border text-xs hover:bg-slate-50 dark:hover:bg-white/10">启动并启用</button>`;
+            else if(app.allowed && data.runtime_ready)action='<small class="text-xs text-emerald-600">可调用</small>';
+            return `<div class="flex items-center justify-between gap-4 py-4"><span class="flex items-center gap-3 min-w-0"><i class="${icons[app.id]||'fas fa-window-maximize'} w-9 h-9 rounded-xl bg-slate-100 dark:bg-white/10 grid place-items-center text-lg"></i><span class="min-w-0"><b class="block text-sm">${escapeHtml(app.name)}</b><small class="block text-xs text-slate-500 mt-0.5">${detail} · 本机窗口操控</small>${error}</span></span><span class="flex items-center gap-3 shrink-0">${action}<label class="relative inline-flex shrink-0 cursor-pointer" aria-label="${escapeHtml(app.name)}操控权限"><input class="desktop-control-app sr-only peer" type="checkbox" data-app="${appId}" ${data.policy.apps?.[app.id]?'checked':''} ${!app.installed||!data.runtime_ready?'disabled':''} onchange="saveDesktopControlSettings()"><span class="w-9 h-5 rounded-full bg-slate-300 peer-checked:bg-blue-500 peer-disabled:opacity-40 transition-colors"></span><span class="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"></span></label></span></div>`;
+        }).join('');
+        if(status)status.textContent=data.runtime_ready?'本机 MCP 运行环境已就绪；已安装应用可直接启用。':'缺少桌面操控运行组件，请重新安装或修复 CowAgent。';
+        if(desktopControlInstallTimer)clearTimeout(desktopControlInstallTimer);
+        if(busy)desktopControlInstallTimer=setTimeout(loadDesktopControlSettings,2500);
+    }catch(error){if(status)status.textContent=`读取失败：${error.message||error}`;}
+}
+async function runDesktopControlAction(app,action){
+    const status=document.getElementById('desktop-control-status');
+    if(status)status.textContent=action==='install'?'正在启动安装…':'正在启动应用…';
+    try{
+        const response=await fetch('/api/desktop-control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({app,action})});
+        const data=await response.json();
+        if(data.status!=='success')throw new Error(data.message||'操作失败');
+        await loadDesktopControlSettings();
+        if(status)status.textContent=data.message||'操作已完成';
+    }catch(error){await loadDesktopControlSettings();if(status)status.textContent=`操作失败：${error.message||error}`;}
+}
+function openDesktopControlInstallPage(app,url){
+    window.open(url,'_blank','noopener');
+    const status=document.getElementById('desktop-control-status');
+    if(status)status.textContent='请在官方页面完成安装和登录；检测到应用后会自动启用。';
+    let attempts=0;
+    const poll=async()=>{
+        try{
+            const response=await fetch('/api/desktop-control',{cache:'no-store'}),data=await response.json();
+            const found=(data.apps||[]).find(item=>item.id===app);
+            if(found?.installed){await runDesktopControlAction(app,'launch');return;}
+        }catch(_){}
+        if(++attempts<120)setTimeout(poll,5000);
+    };
+    setTimeout(poll,5000);
+}
+async function saveDesktopControlSettings(){const status=document.getElementById('desktop-control-status');const apps={};document.querySelectorAll('.desktop-control-app').forEach(input=>apps[input.dataset.app]=input.checked);const policy={any_app:!!document.getElementById('desktop-control-any')?.checked,apps};if(status)status.textContent='正在保存…';try{const response=await fetch('/api/desktop-control',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(policy)}),data=await response.json();if(data.status!=='success')throw new Error(data.message||'保存失败');desktopControlPolicy=data.policy;if(status)status.textContent=data.message||'已保存';}catch(error){if(status)status.textContent=`保存失败：${error.message||error}`;await loadDesktopControlSettings();}}
 function mountStorageControlsIntoKnowledge(){
     const host=document.getElementById('knowledge-storage-controls');
     if(!host)return;
@@ -16124,7 +16864,16 @@ function showSettingsView(view,title){if(view==='data')view='knowledge';restoreS
 function openViewFromSettings(view){showSettingsView(view,view==='logs'?'系统日志':view==='api'?'API 管理':'设置');}
 function applyConsoleFontSize(value){document.documentElement.style.fontSize=`${value}px`;localStorage.setItem('cow_font_size',value);}
 const AGENT_PROCESS_VISIBILITY_KEY='cow_show_agent_process';
-function agentProcessVisible(){return localStorage.getItem(AGENT_PROCESS_VISIBILITY_KEY)==='1';}
+const AGENT_PROCESS_VISIBILITY_MIGRATION_KEY='cow_show_agent_process_v2';
+function agentProcessVisible(){
+    // Earlier builds hid every progress card by default. Show existing and
+    // future runs once, while keeping the user's later toggle effective.
+    if(localStorage.getItem(AGENT_PROCESS_VISIBILITY_MIGRATION_KEY)!=='1'){
+        localStorage.setItem(AGENT_PROCESS_VISIBILITY_KEY,'1');
+        localStorage.setItem(AGENT_PROCESS_VISIBILITY_MIGRATION_KEY,'1');
+    }
+    return localStorage.getItem(AGENT_PROCESS_VISIBILITY_KEY)!=='0';
+}
 function syncAgentProcessSetting(){const visible=agentProcessVisible();document.documentElement.classList.toggle('hide-agent-process',!visible);const input=document.getElementById('settings-show-agent-process');if(input)input.checked=visible;}
 function setAgentProcessVisibility(visible){localStorage.setItem(AGENT_PROCESS_VISIBILITY_KEY,visible?'1':'0');syncAgentProcessSetting();}
 async function loadRetentionSettings(){try{const response=await fetch('/api/storage-retention',{cache:'no-store'}),data=await response.json();if(data.status!=='success')throw new Error(data.message);Object.entries(data.settings||{}).forEach(([key,value])=>{const field=document.getElementById(`retention-${key}`);if(field)field.value=String(value);});const auto=document.getElementById('retention-auto-cleanup');if(auto)auto.checked=data.settings?.auto_cleanup_enabled!==false;}catch(error){const status=document.getElementById('retention-status');if(status)status.textContent=currentLang==='en'?'Could not load retention settings.':'无法读取存储设置。';}}
@@ -16245,8 +16994,8 @@ function setPersonalTodoFilter(status) {
         const button = document.getElementById(`personal-todo-filter-${name}`);
         if (!button) return;
         const active = (name === 'all' && !personalTodoFilter) || name === personalTodoFilter;
-        button.classList.toggle('text-white', active);
-        button.classList.toggle('text-slate-400', !active);
+        button.classList.remove('text-white', 'text-slate-400');
+        button.classList.toggle('is-active', active);
     });
     renderPersonalTodoList();
 }
@@ -16272,20 +17021,20 @@ function renderPersonalTodoList() {
         const done = item.status === 'done' || item.completed;
         const text = item.content || item.title || '';
         const created = String(item.created_at || '').replace('T',' ').replace(/\+\d\d:\d\d$/, '');
-        return `<div class="relative rounded-lg border border-slate-400/60 bg-transparent p-4 md:p-5" data-todo-id="${id}">
-            <div class="flex items-center gap-4">
+        return `<div class="personal-todo-card relative rounded-lg border border-slate-400/60 bg-transparent p-3" data-todo-id="${id}">
+            <div class="flex items-center gap-3">
                 <input type="checkbox" ${done?'checked':''} onchange="togglePersonalTodo('${id}', this.checked)" class="h-4 w-4 rounded border-slate-400 bg-transparent shrink-0">
                 <div class="flex-1 min-w-0">
                     <input id="todo-title-${id}" value="${escapeHtml(text)}" class="hidden">
-                    <input id="todo-content-${id}" value="${escapeHtml(text)}" onkeydown="if(event.key==='Enter')savePersonalTodo('${id}')" class="w-full min-w-0 bg-transparent border-0 outline-none text-sm md:text-base font-semibold ${done?'line-through opacity-60':''}" placeholder="任务内容">
-                    <div class="mt-1 text-xs text-slate-500">创建日期：${escapeHtml(created || '-')}</div>
+                    <div class="personal-todo-created text-[11px] leading-4 text-slate-500 dark:text-slate-400">创建日期：${escapeHtml(created || '-')}</div>
+                    <input id="todo-content-${id}" value="${escapeHtml(text)}" onkeydown="if(event.key==='Enter')savePersonalTodo('${id}')" class="w-full min-w-0 bg-transparent border-0 outline-none text-sm leading-5 font-semibold ${done?'line-through opacity-60':''}" placeholder="任务内容">
                 </div>
-                <select id="todo-status-${id}" onchange="savePersonalTodo('${id}')" class="rounded-lg border border-slate-400/60 bg-transparent px-3 py-2 text-sm shrink-0">
+                <select id="todo-status-${id}" onchange="savePersonalTodo('${id}')" class="rounded-lg border border-slate-400/60 bg-transparent px-2 py-1.5 text-xs shrink-0">
                     ${Object.entries(labels).map(([key,label])=>`<option value="${key}" ${item.status===key?'selected':''}>${label}</option>`).join('')}
                 </select>
-                <button onclick="togglePersonalTodoMenu('${id}')" class="rounded-lg bg-slate-700/70 hover:bg-slate-600 text-white px-3 py-2 shrink-0"><i class="fas fa-ellipsis-v"></i></button>
+                <button onclick="togglePersonalTodoMenu('${id}')" class="rounded-lg bg-slate-700/70 hover:bg-slate-600 text-white px-2.5 py-1.5 shrink-0"><i class="fas fa-ellipsis-v"></i></button>
             </div>
-            <div id="todo-menu-${id}" class="personal-todo-menu hidden absolute right-3 top-16 z-20 w-28 overflow-hidden rounded-lg border border-blue-500/30 bg-slate-800 text-blue-100 shadow-xl">
+            <div id="todo-menu-${id}" class="personal-todo-menu hidden absolute right-3 top-12 z-20 w-28 overflow-hidden rounded-lg border border-blue-500/30 bg-slate-800 text-blue-100 shadow-xl">
                 <button onclick="savePersonalTodo('${id}');togglePersonalTodoMenu('${id}')" class="w-full text-left px-3 py-2 text-sm hover:bg-blue-500/20"><i class="far fa-save mr-2"></i>保存</button>
                 <button onclick="archivePersonalTodo('${id}')" class="w-full text-left px-3 py-2 text-sm hover:bg-blue-500/20"><i class="far fa-window-minimize mr-2"></i>归档</button>
                 <button onclick="deletePersonalTodo('${id}')" class="w-full text-left px-3 py-2 text-sm hover:bg-blue-500/20"><i class="far fa-trash-alt mr-2"></i>删除</button>
@@ -16463,7 +17212,7 @@ async function deletePersonalReminder(id) {
 function switchAutomationTab(tab) {
     if(tab==='agent2')loadHarnessEvolution();
     ['tasks','records','runs','notifications','pending','selfhealing','approvals','templates','explore','personal','todolist','agent2'].forEach(name=>{document.getElementById(`automation-${name}-panel`)?.classList.toggle('hidden',name!==tab);const btn=document.getElementById(`automation-tab-${name}`);if(btn){btn.classList.toggle('bg-white',name===tab);btn.classList.toggle('dark:bg-[#292929]',name===tab);btn.classList.toggle('shadow-sm',name===tab);}});
-    if(tab==='records')loadAutomationRecords(); if(tab==='runs')loadAutomationRuns(); if(tab==='notifications')loadAutomationNotifications(); if(tab==='pending')loadPendingDeliveries(); if(tab==='selfhealing')loadSelfHealingLogs(); if(tab==='approvals')loadAutomationApprovals(); if(tab==='templates')loadAutomationTemplates(); if(tab==='explore')loadExplorationDrafts(); if(tab==='personal')loadPersonalAgentProfile(); if(tab==='todolist')loadPersonalTodoList(); if(tab==='agent2')loadAgent2Dashboard().then(async()=>{try{const data=await agent2Request();renderAgent2RuntimeEvidence(data.capabilities||[]);renderAgent2LimitedLists(data);renderAgent2HomeLearning(data);renderAgent2WeixinSuccessLearning(data);await loadAgent2ApprovalTargets(data.settings?.approval_notifications||[]);await loadAgentRoutingPreview();await loadHarnessEvolution();}catch(_error){}});
+    if(tab==='records')loadAutomationRecords(); if(tab==='runs')loadAutomationRuns(); if(tab==='notifications')loadAutomationNotifications(); if(tab==='pending')loadPendingDeliveries(); if(tab==='selfhealing')loadSelfHealingLogs(); if(tab==='approvals')loadAutomationApprovals(); if(tab==='templates')loadAutomationTemplates(); if(tab==='explore')loadExplorationDrafts(); if(tab==='personal')loadPersonalAgentProfile(); if(tab==='todolist')loadPersonalTodoList(); if(tab==='agent2')loadAgent2Dashboard().then(async()=>{try{const data=await agent2Request();renderAgent2RuntimeEvidence(data.capabilities||[]);renderAgent2LimitedLists(data);renderAgent2HomeLearning(data);renderAgent2WeixinSuccessLearning(data);await loadAgent2ApprovalTargets(data.settings?.approval_notifications||[]);await loadAgentRoutingPreview();await loadAgentEvaluation();await loadHarnessEvolution();}catch(_error){}});
 }
 
 async function agent2Request(options){const response=await fetch('/api/agent2',{cache:'no-store',...(options||{})}),data=await response.json();if(!response.ok||data.status!=='success')throw new Error(data.message||'Agent 2.0 服务异常');return data;}
@@ -16688,6 +17437,8 @@ openAgent2FullView=function(kind){const data=agent2LastDashboard||{},isErrors=ki
 function agentRoutingIntentLabel(intent){return {weather:'天气',email:'邮件',file:'本地文件',web:'联网搜索',browser:'浏览器操作',automation:'自动化',code:'代码/开发',memory:'记忆',general:'普通问答'}[intent]||intent||'普通问答';}
 function agentRoutingCard(item){const d=item.decision||{},agents=(d.agent_candidates||[]).slice(0,3),tools=(d.tool_candidates||[]).slice(0,5),skills=(d.skill_candidates||[]).slice(0,3),fallbacks=(d.fallback_chain||[]).slice(0,5),reasons=(d.reasons||[]).slice(0,5),memoryHints=(d.memory_hints||[]).slice(0,5);const riskTone=d.risk==='high'?'red':d.risk==='medium'?'amber':'emerald';const learned=fallbacks.filter(x=>/事实库|成功路径|失败经验|偏好|恢复|微信|仪表盘/.test(String(x||'')));const backup=fallbacks.filter(x=>!learned.includes(x));return `<article class="rounded-2xl border border-slate-200 dark:border-white/10 p-4 bg-slate-50/60 dark:bg-white/5"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><b class="text-sm leading-5 block truncate" title="${escapeHtml(item.query||'')}">${escapeHtml(item.query||'')}</b><p class="text-[11px] text-slate-400 mt-1">${escapeHtml(reasons.join(' · ')||'直接问答')}</p></div><span class="shrink-0 rounded-full bg-${riskTone}-50 dark:bg-${riskTone}-500/10 px-2 py-0.5 text-[10px] text-${riskTone}-600">${d.risk==='high'?'高风险':d.risk==='medium'?'需确认':'低风险'}</span></div><div class="mt-3 flex flex-wrap gap-2 text-[11px]"><span class="rounded-full bg-blue-50 dark:bg-blue-500/10 px-2 py-1 text-blue-600">${escapeHtml(agentRoutingIntentLabel(d.intent))}</span><span class="rounded-full bg-purple-50 dark:bg-purple-500/10 px-2 py-1 text-purple-600">${d.level==='strong'?'强模型':'快速模型'}</span><span class="rounded-full bg-slate-100 dark:bg-white/10 px-2 py-1 text-slate-500">评分 ${d.score||0}</span></div><div class="mt-4 grid gap-2 text-xs"><div class="rounded-xl bg-white/80 dark:bg-black/10 px-3 py-2"><b class="text-slate-700 dark:text-slate-200">优先 Agent</b><p class="mt-1 text-slate-500 leading-5">${agents.length?agents.map(escapeHtml).join('<br>'):'暂无匹配，直接由当前 Agent 处理'}</p></div><div class="rounded-xl bg-white/80 dark:bg-black/10 px-3 py-2"><b class="text-slate-700 dark:text-slate-200">优先工具</b><p class="mt-1 text-slate-500 leading-5">${tools.length?tools.map(x=>`<span class="inline-block mr-1 mb-1 rounded-full bg-slate-100 dark:bg-white/10 px-2 py-0.5">${escapeHtml(x)}</span>`).join(''):'直接回答'}</p></div>${skills.length?`<div class="rounded-xl bg-white/80 dark:bg-black/10 px-3 py-2"><b class="text-slate-700 dark:text-slate-200">候选技能</b><p class="mt-1 text-slate-500 leading-5">${skills.map(escapeHtml).join(' / ')}</p></div>`:''}${memoryHints.length?`<div class="rounded-xl bg-indigo-50 dark:bg-indigo-500/10 px-3 py-2"><b class="text-indigo-700 dark:text-indigo-300"><i class="fas fa-book-atlas mr-1"></i>个人认知库</b><p class="mt-1 text-slate-500 dark:text-slate-300 leading-5">${memoryHints.map(escapeHtml).join('<br>')}</p></div>`:''}<div class="rounded-xl ${learned.length?'bg-emerald-50 dark:bg-emerald-500/10':'bg-slate-100/70 dark:bg-white/5'} px-3 py-2"><b class="${learned.length?'text-emerald-700 dark:text-emerald-300':'text-slate-500'}"><i class="fas fa-brain mr-1"></i>经验依据</b><p class="mt-1 text-slate-500 dark:text-slate-300 leading-5">${learned.length?learned.map(escapeHtml).join('<br>'):'暂无可复用经验，执行后会自动沉淀'}</p></div><div class="rounded-xl bg-amber-50/70 dark:bg-amber-500/10 px-3 py-2"><b class="text-amber-700 dark:text-amber-300"><i class="fas fa-life-ring mr-1"></i>失败兜底</b><p class="mt-1 text-slate-500 dark:text-slate-300 leading-5">${backup.length?backup.map(escapeHtml).join(' → '):'失败时先换同类工具，再用通用模型给出最短说明'}</p></div></div></article>`;}
 async function loadAgentRoutingPreview(query){const host=document.getElementById('agent2-routing-preview');if(!host)return;const custom=(query!==undefined?query:(document.getElementById('agent2-routing-query')?.value||'')).trim();host.innerHTML='<div class="md:col-span-2 xl:col-span-3 py-8 text-center text-slate-400 text-sm">正在读取智能路由策略…</div>';try{const url=custom?`/api/agent-routing?q=${encodeURIComponent(custom)}`:'/api/agent-routing';const response=await fetch(url,{cache:'no-store'}),data=await response.json();if(!response.ok||data.status!=='success')throw new Error(data.message||'路由策略读取失败');const items=custom?[{query:custom,decision:data.decision||{}}]:(data.samples||[]);host.innerHTML=items.map(agentRoutingCard).join('')||'<div class="py-8 text-center text-slate-400 text-sm">暂无路由样例</div>';}catch(error){host.innerHTML=`<div class="md:col-span-2 xl:col-span-3 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-500/10 p-4 text-sm text-amber-700 dark:text-amber-300">智能路由读取失败：${escapeHtml(error.message)}</div>`;}}
+async function loadAgentEvaluation(){const host=document.getElementById('agent2-evaluation-summary');if(!host)return;try{const response=await fetch('/api/agent-evaluation',{cache:'no-store'}),data=await response.json();if(data.status!=='success')throw new Error(data.message||'评测读取失败');const s=data.summary||{};const accuracy=s.routing_accuracy===null?'待标注':`${Math.round(Number(s.routing_accuracy||0)*100)}%`;host.innerHTML=`<div class="grid sm:grid-cols-4 gap-2">${[['场景案例',s.total_cases||0],['路由命中率',accuracy],['真实指令',data.real_instruction_count||0],['已关联执行',s.recorded_runs||0]].map(([name,value])=>`<div class="rounded-xl bg-slate-50 dark:bg-white/5 p-3"><div class="text-slate-400">${name}</div><b class="mt-1 block text-slate-700 dark:text-slate-200">${value}</b></div>`).join('')}</div><p class="mt-2 text-slate-400">真实指令保存在本机，初始未标注；完整任务完成率需关联执行记录后计算。</p>`;}catch(error){host.textContent=`评测读取失败：${error.message}`;}}
+async function collectAgentEvaluation(){const host=document.getElementById('agent2-evaluation-summary');if(host)host.textContent='正在从本机历史会话收集指令…';try{const response=await fetch('/api/agent-evaluation',{method:'POST'}),data=await response.json();if(data.status!=='success')throw new Error(data.message||'收集失败');await loadAgentEvaluation();_wsToast?.(`已收集 ${data.real_instruction_count||0} 条本机指令，等待标注`);}catch(error){if(host)host.textContent=`收集失败：${error.message}`;}}
 function renderAgent2SelfTraining(data){
     const root=data.self_training||{},settings=root.settings||{},summary=root.summary||{},host=document.getElementById('agent2-self-training-panel');
     const setCheck=(id,value)=>{const el=document.getElementById(id);if(el)el.checked=value!==false;};
@@ -16756,6 +17507,40 @@ async function updateMemoryFactStatus(event, factIdEncoded, action) {
         setMemoryWikiStatus(`${label}成功，记忆树已更新`, 'success');
     } catch (error) {
         setMemoryWikiStatus(`${label}失败：${error.message}`, 'error');
+    }
+}
+async function correctMemoryFact(factIdEncoded) {
+    const factId = decodeURIComponent(factIdEncoded || '');
+    const content = document.getElementById('memory-fact-correction')?.value?.trim();
+    if (!factId || !content) return setMemoryWikiStatus('请填写正确的记忆内容', 'warning');
+    try {
+        const response = await fetch('/api/fact-store', {method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'correct',id:factId,content})});
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.message || '纠正失败');
+        closeMemoryFactDetail();
+        await refreshMemoryFactStore();
+        await loadMemoryWiki(true);
+        setMemoryWikiStatus('记忆已纠正，旧内容已禁用', 'success');
+    } catch (error) {
+        setMemoryWikiStatus(`纠正失败：${error.message}`, 'error');
+    }
+}
+async function saveMemoryFactConstraints(factIdEncoded) {
+    const factId = decodeURIComponent(factIdEncoded || '');
+    if (!factId) return;
+    const validUntil = document.getElementById('memory-fact-valid-until')?.value || '';
+    const appliesTo = document.getElementById('memory-fact-applies-to')?.value?.trim() || '';
+    try {
+        const response = await fetch('/api/fact-store', {method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'set_constraints',id:factId,valid_until:validUntil,applies_to:appliesTo})});
+        const data = await response.json();
+        if (data.status !== 'success') throw new Error(data.message || '保存失败');
+        await refreshMemoryFactStore();
+        await openMemoryFactDetail(factIdEncoded);
+        setMemoryWikiStatus('有效期与适用范围已保存', 'success');
+    } catch (error) {
+        setMemoryWikiStatus(`保存失败：${error.message}`, 'error');
     }
 }
 async function resolveAgent2Proposal(id,decision){
@@ -17066,18 +17851,40 @@ function automationNotificationEventMeta(event){
     const fallback=event.web_fallback||event.fallback||event.delivery_status==='web_fallback'||String(event.target||'').startsWith('Web（自动补发')||/补发到 Web|自动补发/.test(msg);
     if(ok&&fallback)return {ok,fallback:true,label:labels[channel]||event.target||'Web 自动补发',icon:'fa-share-from-square',badge:'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',text:'已补发 Web'};
     if(ok&&/静默|仅保存|未配置/.test(msg))return {ok,label:labels[channel]||event.target||'任务结果',icon:'fa-inbox',badge:'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300',text:'已保存结果'};
-    return {ok,label:labels[channel]||event.target||'通知目标',icon:icons[channel]||'fa-bell',badge:ok?'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300':'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300',text:ok?'已发送':'发送失败'};
+    return {ok,label:labels[channel]||event.target||'通知目标',icon:icons[channel]||'fa-bell',badge:ok?'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300':'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300',text:ok?(channel==='web'?'已保存':'接口已接受'):'发送失败'};
 }
 function automationNotificationActionsHtml(event,meta){
     const runId=String(event.run_id||'').trim(),taskQuery=encodeURIComponent(event.task_id||event.task_name||''),channel=String(event.channel||event.target||'').trim();
     const buttons=[];
+    const diagnosticKey=String(window._automationNotificationDiagnosticCounter=(window._automationNotificationDiagnosticCounter||0)+1);
+    window._automationNotificationDiagnosticEvents=window._automationNotificationDiagnosticEvents||{};
+    window._automationNotificationDiagnosticEvents[diagnosticKey]=event;
     if(runId)buttons.push(`<button onclick="showAutomationRun('${escapeHtml(runId)}')" class="text-primary-500 hover:underline">打开执行会话</button>`);
     else buttons.push(`<button onclick="openAutomationTaskLinkedView('runs','${taskQuery}')" class="text-primary-500 hover:underline">查看执行会话</button>`);
     buttons.push(`<button onclick="openAutomationTaskLinkedView('records','${taskQuery}')" class="text-primary-500 hover:underline">查看交付物</button>`);
     if(meta.ok===false||meta.fallback||/weixin|wecom|webhook|email|wechatcom/.test(channel)){
+        buttons.push(`<button onclick="diagnoseAutomationNotification('${escapeHtml(diagnosticKey)}',this)" class="text-amber-600 hover:underline">一键诊断</button>`);
         buttons.push(`<button onclick="openSettingsCenter();setTimeout(()=>showSettingsView('channels','通道与连接'),60)" class="${meta.ok===false?'text-red-500':'text-blue-500'} hover:underline">检查通道</button>`);
     }
     return `<div class="mt-3 flex flex-wrap gap-3 text-xs">${buttons.join('')}</div>`;
+}
+async function diagnoseAutomationNotification(key,button){
+    const event=window._automationNotificationDiagnosticEvents?.[key];
+    if(!event)return;
+    const channel=String(event.channel||event.target||''),audit=event.execution_audit||[];
+    const failed=[...audit].reverse().find(x=>['failed','error','warning'].includes(String(x.status||'')));
+    let health={};
+    if(channel&&['weixin','wecom_bot','webhook','email','wechatcom_app'].includes(channel)){
+        try{const response=await intelligenceRequest(`/api/channels/health?channel=${encodeURIComponent(channel)}`);health=response.channels?.[0]||{};}catch(error){health={ok:false,message:`通道状态暂不可读：${error.message||error}`};}
+    }
+    const cause=failed?.message||event.message||health.message||'未发现明确失败原因';
+    const recovery=event.delivery_status==='pending_pending'?'结果已保留在待补发队列，仍在有效期内时可补发':event.delivery_status==='pending_delivered'?'待发结果已补发':event.delivery_status==='pending_abandoned'?'补发已停止，过期内容不会再次发送':(event.web_fallback||event.fallback)?'结果已保存在 Web 消息中心':'本次未记录自动补发';
+    const next=health.ok===false?(health.next_action||health.message||'检查通道连接'):automationAuditSuggestion(audit);
+    const canTest=['weixin','wecom_bot','webhook','email','wechatcom_app'].includes(channel);
+    const panel=`<div class="automation-inline-diagnosis mt-3 rounded-lg border border-amber-200 bg-amber-50/60 dark:bg-amber-500/10 p-3 text-xs leading-6"><b>诊断结果</b><div>原因：${escapeHtml(cause)}</div><div>已自动处理：${escapeHtml(recovery)}</div><div>下一步：${escapeHtml(next)}</div><div class="mt-2 flex gap-3">${canTest?`<button onclick="testChannelHealth('${escapeHtml(channel)}',this)" class="text-blue-600 hover:underline">测试通道</button>`:''}${event.pending_id&&event.delivery_status==='pending_pending'?`<button onclick="retryPendingDeliveryIds(['${escapeHtml(event.pending_id)}'],this)" class="text-blue-600 hover:underline">重试发送</button>`:''}</div></div>`;
+    const actions=button.parentElement;
+    actions.nextElementSibling?.classList?.contains('automation-inline-diagnosis')&&actions.nextElementSibling.remove();
+    actions.insertAdjacentHTML('afterend',panel);
 }
 function automationAuditStatusMeta(status){
     const value=String(status||'info');
@@ -17087,14 +17894,14 @@ function automationAuditStatusMeta(status){
     return {dot:'bg-slate-400',badge:'bg-slate-50 text-slate-500 dark:bg-white/5',label:'记录'};
 }
 function automationAuditStageLabel(stage){
-    const map={preflight:'预检',manual_preflight:'手动预检',lock_cleanup:'清理锁',lock_claim:'执行锁',due_window:'时间窗口',instance_guard:'实例保护',execute:'执行',artifact:'产物',send:'发送',verify:'验收',fallback:'兜底',resolve_receiver:'接收人切换',pending_enqueue:'加入补发',pending_retry:'自动补发',reconnect:'重连'};
+    const map={preflight:'预检',manual_preflight:'手动预检',lock_cleanup:'清理锁',lock_claim:'执行锁',due_window:'时间窗口',instance_guard:'实例保护',execute:'执行',tool:'调用工具',content:'生成内容',artifact:'产物',send:'发送',verify:'接口验收',fallback:'兜底',resolve_receiver:'接收人切换',pending_enqueue:'加入补发',pending_retry:'自动补发',reconnect:'重连'};
     return map[stage]||stage||'执行步骤';
 }
 function automationAuditCategory(stage){
     const value=String(stage||'');
     if(['preflight','manual_preflight','instance_guard'].includes(value))return {key:'preflight',label:'预检',icon:'fa-stethoscope'};
     if(['lock_cleanup','lock_claim','due_window'].includes(value))return {key:'lock',label:'锁与实例',icon:'fa-shield-halved'};
-    if(['execute','agent','tool','skill','artifact'].includes(value))return {key:'execute',label:'执行/产物',icon:'fa-gears'};
+    if(['execute','agent','tool','content','skill','artifact'].includes(value))return {key:'execute',label:'执行/产物',icon:'fa-gears'};
     if(['resolve_receiver','send','verify'].includes(value))return {key:'delivery',label:'发送验收',icon:'fa-paper-plane'};
     if(['fallback'].includes(value))return {key:'fallback',label:'兜底',icon:'fa-life-ring'};
     if(['pending_enqueue','pending_retry','reconnect'].includes(value))return {key:'recovery',label:'恢复补发',icon:'fa-rotate-right'};
@@ -17114,7 +17921,8 @@ function automationAuditOverall(events){
 function automationAuditSuggestion(events){
     const latestProblem=[...events].reverse().find(x=>['failed','error','warning','skipped'].includes(String(x.status||'')))||{};
     const text=`${latestProblem.channel||''} ${latestProblem.stage||''} ${latestProblem.message||''} ${JSON.stringify(latestProblem.details||{})}`;
-    if(/weixin|微信|context_token|发送令牌|扫码/i.test(text))return '建议：从手机微信给 Agent 发一条消息刷新会话，或在通道与连接里重新扫码；已入队的消息会自动补发。';
+    if(/prepare failed|准备发送失败|provider_prepare_failed/i.test(text))return '微信服务端未接受本次发送。系统会保留有效期内的结果并重试；可点击“测试通道”复核，仍失败时需检查微信服务端状态或刷新会话。';
+    if(/weixin|微信|context_token|发送令牌|扫码/i.test(text))return '系统会先尝试重连；若会话发送令牌确已失效，需从手机微信给 Agent 发一条消息刷新。仍在有效期内的待发内容会在恢复后补发。';
     if(/wecom|企业微信|长连接|WebSocket|takeover|接管/i.test(text))return '建议：在通道与连接里点击重连企业微信；若仍失败，确认企业微信里已有默认会话。';
     if(/webhook/i.test(text))return '建议：检查 Webhook 地址、请求方法、签名密钥和接收端状态。';
     if(/email|SMTP|邮件/i.test(text))return '建议：检查 SMTP 授权码、默认收件人和邮箱服务商安全策略。';
@@ -17148,7 +17956,8 @@ function automationAuditEventRowHtml(event){
     ].filter(Boolean).join('');
     const details=event.details&&Object.keys(event.details).length?`<details class="mt-2"><summary class="cursor-pointer text-[11px] text-slate-400">查看细节</summary><pre class="mt-2 rounded-lg bg-slate-50 dark:bg-black/20 p-2 text-[11px] whitespace-pre-wrap overflow-auto">${escapeHtml(JSON.stringify(event.details,null,2))}</pre></details>`:'';
     const receiver=event.channel?`${event.channel}${event.receiver?' · '+event.receiver:''}`:'';
-    return `<div class="relative pl-5 pb-2 border-l border-slate-200 dark:border-white/10 last:border-transparent"><span class="absolute -left-1.5 top-1 w-3 h-3 rounded-full ${meta.dot}"></span><div class="flex flex-wrap items-center gap-2"><b class="text-xs">${escapeHtml(automationAuditStageLabel(event.stage))}</b><span class="px-2 py-0.5 rounded-full text-[10px] ${meta.badge}">${meta.label}</span>${receiver?`<span class="text-[11px] text-slate-400">${escapeHtml(receiver)}</span>`:''}<span class="text-[11px] text-slate-400">${escapeHtml(String(event.created_at||'').replace('T',' ').slice(0,19))}</span></div><div class="mt-1 text-xs text-slate-500">${escapeHtml(event.message||cat.label)}</div>${decisionHtml}${details}</div>`;
+    const duration=event.details?.duration_ms!=null?` · ${Number(event.details.duration_ms)}ms`:'';
+    return `<div class="relative pl-5 pb-2 border-l border-slate-200 dark:border-white/10 last:border-transparent"><span class="absolute -left-1.5 top-1 w-3 h-3 rounded-full ${meta.dot}"></span><div class="flex flex-wrap items-center gap-2"><b class="text-xs">${escapeHtml(automationAuditStageLabel(event.stage))}</b><span class="px-2 py-0.5 rounded-full text-[10px] ${meta.badge}">${meta.label}</span>${receiver?`<span class="text-[11px] text-slate-400">${escapeHtml(receiver)}</span>`:''}<span class="text-[11px] text-slate-400">${escapeHtml(String(event.created_at||'').replace('T',' ').slice(0,19))}${duration}</span></div><div class="mt-1 text-xs text-slate-500">${escapeHtml(event.message||cat.label)}</div>${decisionHtml}${details}</div>`;
 }
 function automationExecutionAuditHtml(source,options={}){
     const events=(source?.execution_audit||source?.delivery_audit||[]).filter(Boolean);
@@ -17167,6 +17976,8 @@ function automationExecutionAuditHtml(source,options={}){
 }
 async function loadAutomationNotifications(){
     const host=document.getElementById('automation-notifications-list');if(!host)return;
+    window._automationNotificationDiagnosticEvents={};
+    window._automationNotificationDiagnosticCounter=0;
     const query=encodeURIComponent(document.getElementById('automation-notification-query')?.value.trim()||''),status=encodeURIComponent(document.getElementById('automation-notification-status')?.value||''),channel=encodeURIComponent(document.getElementById('automation-notification-channel')?.value||'');
     host.innerHTML='<div class="py-12 text-center text-slate-400">正在读取通知记录…</div>';
     try{const data=await intelligenceRequest(`/api/intelligence/notifications?query=${query}&status=${status}&channel=${channel}&limit=80`),events=(data.events||[]).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
